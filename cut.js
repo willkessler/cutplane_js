@@ -4,8 +4,23 @@ var parent;
 var plane;
 var crosshair;
 var primitive;
+var controls;
+var vertices;
+var faces;
+var sectionPoly;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
+var RAD_TO_DEG = 180 / Math.PI;
+var DEG_TO_RAD = Math.PI / 180;
+
+var lineMaterial = new THREE.LineBasicMaterial({
+  color: 0xffffff
+});
+
+var sectionMaterial = new THREE.LineBasicMaterial({
+  color: 0xffff00
+});
+
 
 document.onmousemove = function(e){
   cursor.last.x = cursor.current.x; 
@@ -46,14 +61,6 @@ function handleKeyUp(event) {
 
 window.addEventListener('keydown', handleKeyDown, false);
 window.addEventListener('keyup', handleKeyUp, false);
-
-function render() {
-  requestAnimationFrame( render );
-  renderer.render( scene, camera );
-  updateCutplane();
-  updateCrosshair();
-  drawIntersectionPoint();
-}
 
 function setupLights() {
   var dirLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -102,10 +109,6 @@ function setupCrosshair() {
 
 function setupRoom() {
 
-  var material = new THREE.LineBasicMaterial({
-    color: 0xffffff
-  });
-
   var walls = new THREE.Geometry();
   walls.vertices.push(
     new THREE.Vector3( -1, -1, -1 ),
@@ -121,7 +124,7 @@ function setupRoom() {
     new THREE.Vector3( -1, -1, 1 )
   );
 
-  var line = new THREE.Line( walls, material );
+  var line = new THREE.Line( walls, lineMaterial );
   parent.add( line );
 
   walls = new THREE.Geometry();
@@ -130,7 +133,7 @@ function setupRoom() {
     new THREE.Vector3( -1, 1, -1 )
   );
 
-  line = new THREE.Line( walls, material );
+  line = new THREE.Line( walls, lineMaterial );
   parent.add( line );
 
   walls = new THREE.Geometry();
@@ -139,7 +142,7 @@ function setupRoom() {
     new THREE.Vector3( 1, 1, -1 )
   );
 
-  line = new THREE.Line( walls, material );
+  line = new THREE.Line( walls, lineMaterial );
   parent.add( line );
 
   walls = new THREE.Geometry();
@@ -148,21 +151,58 @@ function setupRoom() {
     new THREE.Vector3( 1, -1, -1 )
   );
 
-  line = new THREE.Line( walls, material );
+  line = new THREE.Line( walls, lineMaterial );
   parent.add( line );
 
 }
 
 function setupPrimitive() {
   var cubeSize = 0.25;
-  var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
-  var material = new THREE.MeshPhongMaterial( { 
-    color: 0xff33ff, 
-    shading: THREE.FlatShading,
-    side: THREE.DoubleSide, 
-    opacity: 0.2 } );
-  primitive = new THREE.Mesh( geometry, material );
-  parent.add(primitive);
+  vertices = [
+    new THREE.Vector3(-cubeSize, -cubeSize, -cubeSize ), // four vertices of back face
+    new THREE.Vector3( cubeSize, -cubeSize, -cubeSize ),
+    new THREE.Vector3( cubeSize,  cubeSize, -cubeSize ),
+    new THREE.Vector3(-cubeSize,  cubeSize, -cubeSize ),
+
+    new THREE.Vector3(-cubeSize, -cubeSize,  cubeSize ), // four vertices of front face
+    new THREE.Vector3( cubeSize, -cubeSize,  cubeSize ),
+    new THREE.Vector3( cubeSize,  cubeSize,  cubeSize ),
+    new THREE.Vector3(-cubeSize,  cubeSize,  cubeSize )
+  ];
+  faces = [
+    [ 0, 1, 2, 3 ], // back face
+    [ 4, 5, 6, 7 ], // front face
+    [ 2, 3, 7, 6 ], // top face
+    [ 0, 1, 5, 4 ], // bottom face
+    [ 3, 0, 4, 7 ], // left side face
+    [ 2, 6, 5, 1 ]  // right side face
+  ];
+  var side, face, geometry, poly;
+  // render all edges
+  for (var i = 0; i < faces.length; ++i) {
+    side = new THREE.Geometry();
+    face = faces[i];
+    for (var j = 0; j < face.length; ++j) {
+      side.vertices.push(
+        new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z)
+      );
+    }
+    side.vertices.push(
+      new THREE.Vector3(vertices[face[0]].x,vertices[face[0]].y,vertices[face[0]].z)
+    );
+    poly = new THREE.Line(side, lineMaterial);
+    parent.add(poly);
+  }
+
+  /* var cubeSize = 0.25;
+   * var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
+   * var material = new THREE.MeshPhongMaterial( { 
+   *   color: 0xff33ff, 
+   *   shading: THREE.FlatShading,
+   *   side: THREE.DoubleSide, 
+   *   opacity: 0.2 } );
+   * primitive = new THREE.Mesh( geometry, material );*/
+
 }
 
 function setupLineSegment() {
@@ -177,11 +217,8 @@ function setupLineSegment() {
   parent.add(line);
 }
 
-// http://geomalgorithms.com/a05-_intersect-1.html
-function drawIntersectionPoint() {
+function intersectLineWithPlane(P0, P1, planeZ) {
   var n =  new THREE.Vector3(0,0,1); // normal vector to cutplane
-  var P0 = new THREE.Vector3(0,0,0);
-  var P1 = new THREE.Vector3(1,0.25,1);
   var u = new THREE.Vector3();
   u.copy(P1);
   u = u.sub(P0);
@@ -201,10 +238,52 @@ function drawIntersectionPoint() {
     intersectPoint.copy(P0);
     var offset = u.multiplyScalar(s1);
     intersectPoint.add(offset);
-    //console.log('intersectPoint:', intersectPoint);
-    primitive.position.x = intersectPoint.x;
-    primitive.position.y = intersectPoint.y;
-    primitive.position.z = intersectPoint.z;
+    return({intersected: true,
+            intersectPoint: intersectPoint
+    });
+  } else {
+    return({intersected: false});
+  }
+}
+
+
+// http://geomalgorithms.com/a05-_intersect-1.html
+function drawIntersectionPoints() {
+  var P0, P1;
+  var cutSection = new THREE.Geometry();
+  var sectionExists = false;
+  var faceLen;
+  for (var i = 0; i < faces.length; ++i) {
+    face = faces[i];
+    faceLen = face.length;
+    for (var j = 0; j < faceLen - 1; ++j) {
+      P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
+      P1 = new THREE.Vector3(vertices[face[j + 1]].x,vertices[face[j + 1]].y,vertices[face[j + 1]].z);
+      var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+      if (intersection.intersected) {
+        sectionExists = true;
+        cutSection.vertices.push(
+          new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
+        );
+      }
+    }
+    P0 = new THREE.Vector3(vertices[face[faceLen - 1]].x,vertices[face[faceLen - 1 ]].y,vertices[face[faceLen - 1]].z);
+    P1 = new THREE.Vector3(vertices[face[0]].x,vertices[face[0]].y,vertices[face[0]].z);
+    var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+    if (intersection.intersected) {
+      sectionExists = true;
+      cutSection.vertices.push(
+        new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
+      );
+    }
+    if (sectionPoly) {
+      parent.remove(sectionPoly);
+    }
+    if (sectionExists) {
+      //console.log('we will draw a section line');
+      sectionPoly = new THREE.Line(cutSection, sectionMaterial);
+      parent.add(sectionPoly);
+    }
   }
 }
 
@@ -228,8 +307,13 @@ function updateCutplane() {
 }
 
 
-var RAD_TO_DEG = 180 / Math.PI;
-var DEG_TO_RAD = Math.PI / 180;
+function render() {
+  requestAnimationFrame( render );
+  renderer.render( scene, camera );
+  updateCutplane();
+  updateCrosshair();
+  drawIntersectionPoints();
+}
 
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera( 15, window.innerWidth / window.innerHeight, 1, 100 );
@@ -253,7 +337,7 @@ setupCutplane();
 setupRoom();
 setupCrosshair();
 setupPrimitive();
-setupLineSegment();
+//setupLineSegment();
 setupLights();
 
 camera.position.set( 0,0, 5);

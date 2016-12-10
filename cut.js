@@ -8,6 +8,7 @@ var controls;
 var vertices;
 var faces;
 var sectionPoly;
+var highlight;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -20,6 +21,10 @@ var lineMaterial = new THREE.LineBasicMaterial({
 var sectionMaterial = new THREE.LineBasicMaterial({
   color: 0xffff00
 });
+
+// -------------------------------------------------------------------------------------------------------------
+// Setup
+// -------------------------------------------------------------------------------------------------------------
 
 
 document.onmousemove = function(e){
@@ -61,6 +66,37 @@ function handleKeyUp(event) {
 
 window.addEventListener('keydown', handleKeyDown, false);
 window.addEventListener('keyup', handleKeyUp, false);
+
+// -------------------------------------------------------------------------------------------------------------
+
+// http://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment
+// sqrt call is slow
+// Also cf: http://www.alecjacobson.com/weblog/?p=1486
+
+function sqr(x) { return x * x }
+function dist2(v, w) { return sqr(v.x - w.x) + sqr(v.y - w.y) }
+function distToSegmentSquared(p, v, w) {
+  var l2 = dist2(v, w);
+  if (l2 == 0) { 
+    return { nearestPoint: v, distance: dist2(p, v) };
+  }
+  var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  var nearestPoint = { x: v.x + t * (w.x - v.x),
+                       y: v.y + t * (w.y - v.y) };
+  var nearestRecord = {
+    nearestPoint: nearestPoint,
+    distance: dist2(p, nearestPoint)
+  };
+  //console.log('nearestRecord, dist:', nearestRecord.distance, 'X:', nearestRecord.nearestPoint.x, 'Y:', nearestRecord.nearestPoint.y);
+  return ( nearestRecord );
+}
+
+function distToSegment(p, v, w) { 
+  var dss = distToSegmentSquared(p,v,w);
+  return Math.sqrt(dss.distance); 
+}
+
 
 function setupLights() {
   var dirLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -192,17 +228,32 @@ function setupPrimitive() {
     );
     poly = new THREE.Line(side, lineMaterial);
     parent.add(poly);
+
+/*
+       var cubeSize = 0.75;
+       var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
+       var material = new THREE.MeshPhongMaterial( { 
+       color: 0x0000ff, 
+       side: THREE.DoubleSide, 
+       opacity: 1.0 } );
+       primitive = new THREE.Mesh( geometry, material );
+       primitive.position.x = 1.7;
+       parent.add(primitive);
+*/
+
   }
 
-  /* var cubeSize = 0.25;
-   * var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
-   * var material = new THREE.MeshPhongMaterial( { 
-   *   color: 0xff33ff, 
-   *   shading: THREE.FlatShading,
-   *   side: THREE.DoubleSide, 
-   *   opacity: 0.2 } );
-   * primitive = new THREE.Mesh( geometry, material );*/
+}
 
+function setupHighlight() {
+  var radius = 0.04;
+  var geometry = new THREE.CircleGeometry(radius,20);
+  var material = new THREE.MeshBasicMaterial( { 
+    color: 0xff0000,
+    side: THREE.DoubleSide, 
+    opacity: 1.0 } );
+  highlight = new THREE.Mesh( geometry, material );
+  parent.add(highlight);
 }
 
 function setupLineSegment() {
@@ -248,11 +299,12 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 
 
 // http://geomalgorithms.com/a05-_intersect-1.html
-function drawIntersectionPoints() {
+function drawSectionLine() {
   var P0, P1;
   var cutSection = new THREE.Geometry();
   var sectionExists = false;
   var faceLen;
+  var sectionPoints = [];
   for (var i = 0; i < faces.length; ++i) {
     face = faces[i];
     faceLen = face.length;
@@ -265,6 +317,7 @@ function drawIntersectionPoints() {
         cutSection.vertices.push(
           new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
         );
+        sectionPoints.push(intersection.intersectPoint);
       }
     }
     P0 = new THREE.Vector3(vertices[face[faceLen - 1]].x,vertices[face[faceLen - 1 ]].y,vertices[face[faceLen - 1]].z);
@@ -275,6 +328,7 @@ function drawIntersectionPoints() {
       cutSection.vertices.push(
         new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
       );
+      sectionPoints.push(intersection.intersectPoint);
     }
     if (sectionPoly) {
       parent.remove(sectionPoly);
@@ -283,6 +337,19 @@ function drawIntersectionPoints() {
       //console.log('we will draw a section line');
       sectionPoly = new THREE.Line(cutSection, sectionMaterial);
       parent.add(sectionPoly);
+
+      var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+      for (var k = 0; k < sectionPoints.length - 1; ++k) {
+        var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
+        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+          nearestMin = nearest.distance;
+          highlightCenter.x = nearest.nearestPoint.x;
+          highlightCenter.y = nearest.nearestPoint.y;
+        }          
+      }
+      highlight.position.x = highlightCenter.x;
+      highlight.position.y = highlightCenter.y;
+      highlight.position.z = plane.position.z + 0.01;
     }
   }
 }
@@ -312,7 +379,7 @@ function render() {
   renderer.render( scene, camera );
   updateCutplane();
   updateCrosshair();
-  drawIntersectionPoints();
+  drawSectionLine();
 }
 
 var scene = new THREE.Scene();
@@ -336,6 +403,7 @@ scene.add( parent );
 setupCutplane();
 setupRoom();
 setupCrosshair();
+setupHighlight();
 setupPrimitive();
 //setupLineSegment();
 setupLights();

@@ -9,6 +9,8 @@ var vertices;
 var faces;
 var sectionPoly;
 var highlight;
+var movingCutplane = false;
+var crosshairPosition;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -35,7 +37,11 @@ document.onmousemove = function(e){
 }
 
 function handleKeyDown(event) {
+  console.log('key pressed:', event.keyCode);
   switch (event.keyCode) {
+    case 18:
+      // option key pressed
+      break;
     case 17:
     case 91:
     case 93:
@@ -51,6 +57,9 @@ function handleKeyDown(event) {
 
 function handleKeyUp(event) {
   switch (event.keyCode) {
+    case 18:
+      // option key pressed
+      break;
     case 17:
     case 91:
     case 93:
@@ -98,6 +107,16 @@ function distToSegment(p, v, w) {
 }
 
 
+function setupHelp() {
+  var text2 = document.createElement('div');
+  text2.style.position = 'absolute';
+  //text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
+  text2.className = "instructions";
+  text2.innerHTML = "Hold down Command key to move Cutplane.<br>Click and drag to rotate room.<br>Mouse near faces to modify shapes."
+  document.body.appendChild(text2);
+}
+
+
 function setupLights() {
   var dirLight = new THREE.DirectionalLight(0xffffff, 1);
   dirLight.position.set(100, 100, 50);
@@ -138,7 +157,7 @@ function setupCrosshair() {
     new THREE.Vector3 ( crosshairSize, 0,    crosshairZoffset)
   );
   crosshair = new THREE.Line( crosshairLines );
-
+  crosshairPosition = { x: 0, y: 0 };
   plane.add(crosshair);
   
 }
@@ -355,13 +374,28 @@ function drawSectionLine() {
 }
 
 function updateCrosshair() {
-  //console.log('cursor:', cursor.current.x, cursor.current.y);
-  crosshair.position.x = 1.0 * ((cursor.current.x / (window.innerWidth / 2)) - 1);
-  crosshair.position.y = -1.0 * ((cursor.current.y / (window.innerHeight / 2)) - 1);
+  /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
+  if (!movingCutplane) {
+    if (true) {
+      //console.log('cursor:', cursor.current.x, cursor.current.y);
+      crosshair.position.x = 1.0 * ((cursor.current.x / (window.innerWidth / 2)) - 1);
+      crosshair.position.y = -1.0 * ((cursor.current.y / (window.innerHeight / 2)) - 1);
+    } else {
+      var cursorXdiff = (cursor.current.x - cursor.last.x);
+      var cursorYdiff = (cursor.current.y - cursor.last.y);
+      var maxCursorMove = 20;
+      if ((Math.abs(cursorXdiff) < maxCursorMove) && Math.abs(cursorYdiff) < maxCursorMove) {
+        crosshair.position.x =
+          Math.min(1.0, Math.max(-1, crosshair.position.x + (cursorXdiff / window.innerWidth)));
+        crosshair.position.y =
+          Math.min(1.0, Math.max(-1, crosshair.position.y + (-1 * cursorYdiff / window.innerHeight)));
+      }
+    }
+  }  
 }
 
 function updateCutplane() {
-  if (window.cmdKeyPressed) {
+  if (movingCutplane) {
     var cursorXdiff = (cursor.current.x - cursor.last.x) * .01;
     //console.log('cursorXdiff is:', cursorXdiff, cursor.current.x,cursor.last.x );
     if( Math.abs(cursorXdiff) > 0 ){
@@ -377,8 +411,9 @@ function updateCutplane() {
 function render() {
   requestAnimationFrame( render );
   renderer.render( scene, camera );
-  updateCutplane();
+  movingCutplane = window.cmdKeyPressed;
   updateCrosshair();
+  updateCutplane();
   drawSectionLine();
 }
 
@@ -397,9 +432,10 @@ document.body.appendChild( renderer.domElement );
 parent = new THREE.Object3D();
 scene.add( parent );
 
-//parent.rotation.x = -1;
-//parent.rotation.y = 1;
+parent.rotation.x = Math.PI/8;
+parent.rotation.y = Math.PI/4;
 
+setupHelp();
 setupCutplane();
 setupRoom();
 setupCrosshair();

@@ -14,6 +14,9 @@ var macCursorPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 var lastPausePosition = { x: 0, y:0 };
 var mustSaveLastPosition;
 var startCursorPauseTime;
+var wasMovingPlane = false;
+var cursorAdjust = { x: 0, y:0 };
+var cursorPreMove = { x: 0, y:0 };
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -402,6 +405,18 @@ function drawSectionLine() {
 
 function updateCrosshair() {
   /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
+  if (wasMovingPlane != movingCutplane) {
+    if (wasMovingPlane) {
+      console.log('Stopped moving plane, calculating adjustment.');
+      cursorAdjust.x = cursorAdjust.x + (cursorPreMove.x - cursor.current.x);
+      cursorAdjust.y = cursorAdjust.y + (cursorPreMove.y - cursor.current.y);
+    } else {
+      console.log('started moving plane, saving cursor position');
+      cursorPreMove.x = cursor.current.x;
+      cursorPreMove.y = cursor.current.y;
+    }
+    wasMovingPlane = movingCutplane;
+  }
   if (!movingCutplane) {
     var cursorXdiff = (cursor.current.x - cursor.last.x);
     var cursorYdiff = (cursor.current.y - cursor.last.y);
@@ -433,10 +448,15 @@ function updateCrosshair() {
     // must compute crosshair offset when command key goes back up
     //
     
-    var xx = cursor.current.x - (window.innerWidth / 2) ; //  +  macCursorPosition.x;
-    crosshair.position.x = 2 * (xx / window.innerWidth)  + lastPausePosition.x;
-    var yy = cursor.current.y - (window.innerHeight / 2); // + macCursorPosition.y;
-    crosshair.position.y = -2 * (yy / window.innerHeight) + lastPausePosition.y; // + lastPausePosition.y ;
+    // Semi working, but still not quite right
+    // var xx = cursor.current.x - (window.innerWidth / 2) ; //  +  macCursorPosition.x;
+    // crosshair.position.x = 2 * (xx / window.innerWidth)  + lastPausePosition.x;
+    // var yy = cursor.current.y - (window.innerHeight / 2); // + macCursorPosition.y;
+    // crosshair.position.y = -2 * (yy / window.innerHeight) + lastPausePosition.y; // + lastPausePosition.y ;
+
+    crosshair.position.x = ( 2.0 * ((cursor.current.x + cursorAdjust.x) / window.innerWidth))  - 1.0;
+    crosshair.position.y = (-2.0 * ((cursor.current.y + cursorAdjust.y) / window.innerHeight)) + 1.0;
+
     debugText(['Crosshair set', 
                'cursorX:', cursor.current.x,
                'cursorY:', cursor.current.y,

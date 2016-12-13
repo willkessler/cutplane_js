@@ -10,7 +10,10 @@ var faces;
 var sectionPoly;
 var highlight;
 var movingCutplane = false;
-var crosshairPosition;
+var macCursorPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+var lastPausePosition = { x: 0, y:0 };
+var mustSaveLastPosition;
+var startCursorPauseTime;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -20,8 +23,14 @@ var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
 });
 
-var sectionMaterial = new THREE.LineBasicMaterial({
-  color: 0xffff00
+var sectionMaterial = new THREE.LineDashedMaterial({
+  color: 0xffff00,
+  dashSize: 2,
+  gapSize: 2,
+  linewidth: 50,
+  depthTest: false, // so that we can always see the section line
+  depthWrite: false,
+  depthFunc: THREE.AlwaysDepth
 });
 
 // -------------------------------------------------------------------------------------------------------------
@@ -34,6 +43,7 @@ document.onmousemove = function(e){
   cursor.last.y = cursor.current.y;
   cursor.current.x = e.pageX;
   cursor.current.y = e.pageY;
+  //  debugText(['Cursor ', 'X:', e.pageX, 'Y:', e.pageY,  window.innerWidth, window.innerHeight]);
 }
 
 function handleKeyDown(event) {
@@ -47,6 +57,7 @@ function handleKeyDown(event) {
     case 93:
     case 224:
       window.cmdKeyPressed = true;
+      mustSaveLastPosition = true;
       break;
     case 75:
       break;
@@ -114,8 +125,20 @@ function setupHelp() {
   text2.className = "instructions";
   text2.innerHTML = "Hold down Command key to move Cutplane.<br>Click and drag to rotate room.<br>Mouse near faces to modify shapes."
   document.body.appendChild(text2);
+
+  /* Status */
+  text3 = document.createElement('div');
+  text3.style.position = 'absolute';
+  //text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
+  text3.className = "status";
+  text3.innerHTML = "status";
+  document.body.appendChild(text3);
+  
 }
 
+function debugText(displayArray) {
+  text3.innerHTML = displayArray.join('<br><br>');
+}
 
 function setupLights() {
   var dirLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -248,17 +271,18 @@ function setupPrimitive() {
     poly = new THREE.Line(side, lineMaterial);
     parent.add(poly);
 
-/*
-       var cubeSize = 0.75;
-       var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
-       var material = new THREE.MeshPhongMaterial( { 
-       color: 0x0000ff, 
-       side: THREE.DoubleSide, 
-       opacity: 1.0 } );
-       primitive = new THREE.Mesh( geometry, material );
-       primitive.position.x = 1.7;
-       parent.add(primitive);
-*/
+
+    var cubeSize = 0.15;
+    var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
+    var material = new THREE.MeshPhongMaterial( { 
+      color: 0x0000ff, 
+      side: THREE.DoubleSide, 
+      opacity: 1.0 
+    } );
+    primitive = new THREE.Mesh( geometry, material );
+    //primitive.position.x = 1.7;
+    parent.add(primitive);
+
 
   }
 
@@ -354,6 +378,7 @@ function drawSectionLine() {
     }
     if (sectionExists) {
       //console.log('we will draw a section line');
+      cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
       sectionPoly = new THREE.Line(cutSection, sectionMaterial);
       parent.add(sectionPoly);
 
@@ -373,25 +398,71 @@ function drawSectionLine() {
   }
 }
 
+// http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
+
 function updateCrosshair() {
   /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
   if (!movingCutplane) {
-    if (true) {
-      //console.log('cursor:', cursor.current.x, cursor.current.y);
-      crosshair.position.x = 1.0 * ((cursor.current.x / (window.innerWidth / 2)) - 1);
-      crosshair.position.y = -1.0 * ((cursor.current.y / (window.innerHeight / 2)) - 1);
+    var cursorXdiff = (cursor.current.x - cursor.last.x);
+    var cursorYdiff = (cursor.current.y - cursor.last.y);
+    if ((cursorXdiff < 1) && (cursorYdiff < 1)) {
+      var d = new Date();
+      if (startCursorPauseTime == undefined) {
+        startCursorPauseTime = d.getTime();
+        //debugText(['Cursor scan ', 'X:', cursor.current.x, 'Y:', cursor.current.y]);
+      } else {
+        var cursorNowTime = d.getTime();
+        if ((cursorNowTime - startCursorPauseTime) > 1500) {
+          startCursorPauseTime = cursorNowTime;
+          macCursorPosition.x = (window.innerWidth / 2) - cursor.current.x;
+          macCursorPosition.y = (window.innerHeight / 2) - cursor.current.y;
+          //debugText(['Cursor Set ', 'X:', cursor.current.x, 'Y:', cursor.current.y]);
+        }
+      }
     } else {
-      var cursorXdiff = (cursor.current.x - cursor.last.x);
-      var cursorYdiff = (cursor.current.y - cursor.last.y);
-      var maxCursorMove = 20;
-      if ((Math.abs(cursorXdiff) < maxCursorMove) && Math.abs(cursorYdiff) < maxCursorMove) {
-        crosshair.position.x =
-          Math.min(1.0, Math.max(-1, crosshair.position.x + (cursorXdiff / window.innerWidth)));
-        crosshair.position.y =
-          Math.min(1.0, Math.max(-1, crosshair.position.y + (-1 * cursorYdiff / window.innerHeight)));
+      //debugText(['Cursor scan ', 'X:', cursor.current.x, 'Y:', cursor.current.y]);
+      if (mustSaveLastPosition) {
+        lastPausePosition.x = crosshair.position.x;
+        lastPausePosition.y = crosshair.position.y;
+        mustSaveLastPosition = false;
       }
     }
-  }  
+    //console.log('cursor:', cursor.current.x, cursor.current.y);
+
+    //
+    // must compute crosshair offset when command key goes back up
+    //
+    
+    var xx = cursor.current.x - (window.innerWidth / 2) ; //  +  macCursorPosition.x;
+    crosshair.position.x = 2 * (xx / window.innerWidth)  + lastPausePosition.x;
+    var yy = cursor.current.y - (window.innerHeight / 2); // + macCursorPosition.y;
+    crosshair.position.y = -2 * (yy / window.innerHeight) + lastPausePosition.y; // + lastPausePosition.y ;
+    debugText(['Crosshair set', 
+               'cursorX:', cursor.current.x,
+               'cursorY:', cursor.current.y,
+               'XX:', xx, 
+               'YY:', yy, 
+               'mcX:', macCursorPosition.x,
+               'mcY:', macCursorPosition.y,
+               'X:', crosshair.position.x, 
+               'Y:', crosshair.position.y]);
+
+    //crosshair.position.x =  (1.0 * (cursor.current.x - macCursorPosition.x - lastPausePosition.x) / window.innerWidth) - 1;
+    //crosshair.position.y =  (-1.0 * (cursor.current.y - macCursorPosition.y - lastPausePosition.y) / window.innerHeight) - 1;
+
+    // canonical, basic mapping    
+    // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
+    // crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
+
+    // var maxCursorMove = 20;
+    // if ((Math.abs(cursorXdiff) < maxCursorMove) && Math.abs(cursorYdiff) < maxCursorMove) {
+      //crosshair.position.x =
+        // Math.min(1.0, Math.max(-1, crosshair.position.x + (cursorXdiff / window.innerWidth)));
+      //crosshair.position.y =
+        //Math.min(1.0, Math.max(-1, crosshair.position.y + (-1 * cursorYdiff / window.innerHeight)));
+    //}
+  }
+
 }
 
 function updateCutplane() {
@@ -399,14 +470,15 @@ function updateCutplane() {
     var cursorXdiff = (cursor.current.x - cursor.last.x) * .01;
     //console.log('cursorXdiff is:', cursorXdiff, cursor.current.x,cursor.last.x );
     if( Math.abs(cursorXdiff) > 0 ){
-      cursor.last.x = cursor.current.x;
-      cursor.last.y = cursor.current.y;
-
       plane.position.z = Math.max(-1, Math.min(plane.position.z + cursorXdiff, 1.0));
     }
   }
 }
 
+function updateCursorTracking() {
+  cursor.last.x = cursor.current.x;
+  cursor.last.y = cursor.current.y;
+}
 
 function render() {
   requestAnimationFrame( render );
@@ -414,6 +486,7 @@ function render() {
   movingCutplane = window.cmdKeyPressed;
   updateCrosshair();
   updateCutplane();
+  updateCursorTracking();
   drawSectionLine();
 }
 

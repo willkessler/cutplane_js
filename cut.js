@@ -1,3 +1,15 @@
+// TODO: 
+//  make option key rotate the room, and remove Orbit
+//  cursor more like the old cursor
+//  put in jsmodeler and draw section line around that.
+//  allow you to grab edges and faces and drag them: update the model
+//  figure out how to make the plane semitransparent with a semi-transparent dotted texture
+//  
+//  restore the rotate tool
+//  restore booleans
+//  restore snapping of faces to other faces
+//  restore the tool chests
+
 // http://jsfiddle.net/hbt9c/317/
 
 var parent;
@@ -10,13 +22,14 @@ var faces;
 var sectionPoly;
 var highlight;
 var movingCutplane = false;
-var macCursorPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-var lastPausePosition = { x: 0, y:0 };
-var mustSaveLastPosition;
 var startCursorPauseTime;
 var wasMovingPlane = false;
 var cursorAdjust = { x: 0, y:0 };
 var cursorPreMove = { x: 0, y:0 };
+var rotatingRoom = true;
+var wasRotatingRoom = false;
+var roomRotateX = Math.PI/8;
+var roomRotateY = Math.PI/4;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -26,7 +39,11 @@ var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
 });
 
-var sectionMaterial = new THREE.LineDashedMaterial({
+var sectionMaterial = new THREE.LineBasicMaterial({
+  color: 0xffff00
+});
+
+var sectionMaterialDashed = new THREE.LineDashedMaterial({
   color: 0xffff00,
   dashSize: 2,
   gapSize: 2,
@@ -53,14 +70,13 @@ function handleKeyDown(event) {
   console.log('key pressed:', event.keyCode);
   switch (event.keyCode) {
     case 18:
-      // option key pressed
+      window.optionKeyPressed = true;
       break;
     case 17:
     case 91:
     case 93:
     case 224:
       window.cmdKeyPressed = true;
-      mustSaveLastPosition = true;
       break;
     case 75:
       break;
@@ -72,7 +88,7 @@ function handleKeyDown(event) {
 function handleKeyUp(event) {
   switch (event.keyCode) {
     case 18:
-      // option key pressed
+      window.optionKeyPressed = false;
       break;
     case 17:
     case 91:
@@ -140,7 +156,7 @@ function setupHelp() {
 }
 
 function debugText(displayArray) {
-  text3.innerHTML = displayArray.join('<br><br>');
+  text3.innerHTML = displayArray.join('<br>');
 }
 
 function setupLights() {
@@ -381,7 +397,7 @@ function drawSectionLine() {
     }
     if (sectionExists) {
       //console.log('we will draw a section line');
-      cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
+      //cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
       sectionPoly = new THREE.Line(cutSection, sectionMaterial);
       parent.add(sectionPoly);
 
@@ -401,8 +417,33 @@ function drawSectionLine() {
   }
 }
 
-// http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
+function updateRoomView() {
+  if (wasRotatingRoom != rotatingRoom) {
+    if (wasRotatingRoom) {
+      console.log('Stopped rotating room, calculating adjustment.');
+      cursorAdjust.x = cursorAdjust.x + (cursorPreMove.x - cursor.current.x);
+      cursorAdjust.y = cursorAdjust.y + (cursorPreMove.y - cursor.current.y);
+    } else {
+      console.log('started rotating room, saving cursor position');
+      cursorPreMove.x = cursor.current.x;
+      cursorPreMove.y = cursor.current.y;
+    }
+    wasRotatingRoom = rotatingRoom;
 
+  }
+  if (rotatingRoom) {
+    var cursorXdiff = (cursor.current.x - cursor.last.x);
+    var cursorYdiff = (cursor.current.y - cursor.last.y);
+    roomRotateX = Math.min(90 * DEG_TO_RAD, Math.max(0, roomRotateX + cursorYdiff * DEG_TO_RAD));
+    roomRotateY = Math.min(90 * DEG_TO_RAD, Math.max(-90 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
+    console.log('roomRotateX:', roomRotateX, 'roomRotateY:', roomRotateY);
+  }
+  parent.rotation.x = roomRotateX;
+  parent.rotation.y = roomRotateY;
+
+}
+
+// http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
 function updateCrosshair() {
   /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
   if (wasMovingPlane != movingCutplane) {
@@ -417,71 +458,23 @@ function updateCrosshair() {
     }
     wasMovingPlane = movingCutplane;
   }
-  if (!movingCutplane) {
-    var cursorXdiff = (cursor.current.x - cursor.last.x);
-    var cursorYdiff = (cursor.current.y - cursor.last.y);
-    if ((cursorXdiff < 1) && (cursorYdiff < 1)) {
-      var d = new Date();
-      if (startCursorPauseTime == undefined) {
-        startCursorPauseTime = d.getTime();
-        //debugText(['Cursor scan ', 'X:', cursor.current.x, 'Y:', cursor.current.y]);
-      } else {
-        var cursorNowTime = d.getTime();
-        if ((cursorNowTime - startCursorPauseTime) > 1500) {
-          startCursorPauseTime = cursorNowTime;
-          macCursorPosition.x = (window.innerWidth / 2) - cursor.current.x;
-          macCursorPosition.y = (window.innerHeight / 2) - cursor.current.y;
-          //debugText(['Cursor Set ', 'X:', cursor.current.x, 'Y:', cursor.current.y]);
-        }
-      }
-    } else {
-      //debugText(['Cursor scan ', 'X:', cursor.current.x, 'Y:', cursor.current.y]);
-      if (mustSaveLastPosition) {
-        lastPausePosition.x = crosshair.position.x;
-        lastPausePosition.y = crosshair.position.y;
-        mustSaveLastPosition = false;
-      }
-    }
-    //console.log('cursor:', cursor.current.x, cursor.current.y);
-
-    //
-    // must compute crosshair offset when command key goes back up
-    //
-    
-    // Semi working, but still not quite right
-    // var xx = cursor.current.x - (window.innerWidth / 2) ; //  +  macCursorPosition.x;
-    // crosshair.position.x = 2 * (xx / window.innerWidth)  + lastPausePosition.x;
-    // var yy = cursor.current.y - (window.innerHeight / 2); // + macCursorPosition.y;
-    // crosshair.position.y = -2 * (yy / window.innerHeight) + lastPausePosition.y; // + lastPausePosition.y ;
-
+  if (!movingCutplane && !rotatingRoom) {
     crosshair.position.x = ( 2.0 * ((cursor.current.x + cursorAdjust.x) / window.innerWidth))  - 1.0;
     crosshair.position.y = (-2.0 * ((cursor.current.y + cursorAdjust.y) / window.innerHeight)) + 1.0;
+  }
 
-    debugText(['Crosshair set', 
-               'cursorX:', cursor.current.x,
-               'cursorY:', cursor.current.y,
-               'XX:', xx, 
-               'YY:', yy, 
-               'mcX:', macCursorPosition.x,
-               'mcY:', macCursorPosition.y,
-               'X:', crosshair.position.x, 
-               'Y:', crosshair.position.y]);
-
-    //crosshair.position.x =  (1.0 * (cursor.current.x - macCursorPosition.x - lastPausePosition.x) / window.innerWidth) - 1;
-    //crosshair.position.y =  (-1.0 * (cursor.current.y - macCursorPosition.y - lastPausePosition.y) / window.innerHeight) - 1;
+  debugText(['Crosshair set', 
+             'cursorX:', cursor.current.x,
+             'cursorY:', cursor.current.y,
+             'X:', crosshair.position.x, 
+             'Y:', crosshair.position.y,
+             'rotX:', roomRotateX,
+             'rotY:', roomRotateY
+  ]);
 
     // canonical, basic mapping    
     // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
     // crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
-
-    // var maxCursorMove = 20;
-    // if ((Math.abs(cursorXdiff) < maxCursorMove) && Math.abs(cursorYdiff) < maxCursorMove) {
-      //crosshair.position.x =
-        // Math.min(1.0, Math.max(-1, crosshair.position.x + (cursorXdiff / window.innerWidth)));
-      //crosshair.position.y =
-        //Math.min(1.0, Math.max(-1, crosshair.position.y + (-1 * cursorYdiff / window.innerHeight)));
-    //}
-  }
 
 }
 
@@ -504,6 +497,9 @@ function render() {
   requestAnimationFrame( render );
   renderer.render( scene, camera );
   movingCutplane = window.cmdKeyPressed;
+  rotatingRoom = window.optionKeyPressed;
+
+  updateRoomView();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
@@ -511,11 +507,12 @@ function render() {
 }
 
 var scene = new THREE.Scene();
-var camera = new THREE.PerspectiveCamera( 15, window.innerWidth / window.innerHeight, 1, 100 );
+//var camera = new THREE.PerspectiveCamera( 15, window.innerWidth / window.innerHeight, 1, 100 ); // with orbitControls
+var camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 1, 100 );
 
-controls = new THREE.OrbitControls( camera );
-controls.minDistance = 10;
-controls.maxDistance = 50;
+//controls = new THREE.OrbitControls( camera );
+//controls.minDistance = 10;
+//controls.maxDistance = 50;
 
 var renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
@@ -525,8 +522,6 @@ document.body.appendChild( renderer.domElement );
 parent = new THREE.Object3D();
 scene.add( parent );
 
-parent.rotation.x = Math.PI/8;
-parent.rotation.y = Math.PI/4;
 
 setupHelp();
 setupCutplane();
@@ -538,7 +533,7 @@ setupPrimitive();
 setupLights();
 
 camera.position.set( 0,0, 5);
-controls.update();
+//controls.update();
 
 setupLights();
 

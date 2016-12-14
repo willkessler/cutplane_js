@@ -1,16 +1,25 @@
 // TODO: 
-//  make option key rotate the room, and remove Orbit
-//  cursor more like the old cursor
-//  put in jsmodeler and draw section line around that.
-//  allow you to grab edges and faces and drag them: update the model
-//  figure out how to make the plane semitransparent with a semi-transparent dotted texture
+//  [X] make option key rotate the room, and remove Orbit
+//  [X] make section line properly dashed
+//  [X] figure out how to make the plane semitransparent with a semi-transparent dotted texture
+//  [ ] put in jsmodeler and draw section line around that.
+//  [ ] fix cursor offset bugs
+//  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
+//      https://en.wikipedia.org/wiki/Vector_projection
+//      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
+//  [ ] make cursor look more like the old cursor
+//  [ ] allow you to grab edges and faces and drag them: update the model
 //  
-//  restore the rotate tool
-//  restore booleans
-//  restore snapping of faces to other faces
-//  restore the tool chests
+//  [ ] restore the rotate tool
+//  [ ] restore booleans
+//  [ ] restore snapping of faces to other faces
+//  [ ] restore the tool chests
+//  [ ] investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
+//  [ ] look at CSG plugin https://github.com/chandlerprall/ThreeCSG/
 
 // http://jsfiddle.net/hbt9c/317/
+
+// basic threejs tutorial: https://manu.ninja/webgl-3d-model-viewer-using-three-js
 
 var parent;
 var plane;
@@ -39,15 +48,11 @@ var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
 });
 
-var sectionMaterial = new THREE.LineBasicMaterial({
-  color: 0xffff00
-});
-
 var sectionMaterialDashed = new THREE.LineDashedMaterial({
   color: 0xffff00,
-  dashSize: 2,
-  gapSize: 2,
-  linewidth: 50,
+  dashSize: .02,
+  gapSize: .02,
+  linewidth: 1,
   depthTest: false, // so that we can always see the section line
   depthWrite: false,
   depthFunc: THREE.AlwaysDepth
@@ -160,15 +165,24 @@ function debugText(displayArray) {
 }
 
 function setupLights() {
-  var dirLight = new THREE.DirectionalLight(0xffffff, 1);
-  dirLight.position.set(100, 100, 50);
-  scene.add(dirLight);
-  var light = new THREE.AmbientLight( 0xfff ); // soft white light
+//  var dirLight = new THREE.DirectionalLight(0xffffff, 1);
+//  dirLight.position.set(100, 100, 50);
+//  scene.add(dirLight);
+  var light = new THREE.AmbientLight( 0xfffff ); // soft white light
   scene.add( light );
 }
 
 function setupCutplane() {
-  var material = new THREE.MeshLambertMaterial({color: 0x5555ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+  var loader = new THREE.TextureLoader;
+  loader.crossOrigin = '';
+
+  //var material = new THREE.MeshLambertMaterial({color: 0x5555ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+  var texture = new THREE.TextureLoader().load( "images/texture4x4.png" );
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set( 200, 200 );
+
+  var material = new THREE.MeshPhongMaterial({map: texture, transparent:true });
   var shape = new THREE.Shape();
   shape.moveTo(-1,-1,0);
   shape.lineTo(1,-1,0);
@@ -291,6 +305,18 @@ function setupPrimitive() {
     parent.add(poly);
 
 
+// Hack testing/ demo part
+
+/*
+    var lineGeometry = new THREE.Geometry();
+    var vertArray = lineGeometry.vertices;
+    vertArray.push( new THREE.Vector3(-100, -100, 0), new THREE.Vector3(100, 100, 0) );
+    lineGeometry.computeLineDistances();
+    var lineMaterial = new THREE.LineDashedMaterial( { color: 0x00cc00, dashSize: .03, gapSize: .03, linewidth: 1 } );
+    var line = new THREE.Line( lineGeometry, lineMaterial );
+    scene.add(line);
+*/
+
     var cubeSize = 0.15;
     var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
     var material = new THREE.MeshPhongMaterial( { 
@@ -301,7 +327,6 @@ function setupPrimitive() {
     primitive = new THREE.Mesh( geometry, material );
     //primitive.position.x = 1.7;
     parent.add(primitive);
-
 
   }
 
@@ -397,8 +422,8 @@ function drawSectionLine() {
     }
     if (sectionExists) {
       //console.log('we will draw a section line');
-      //cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
-      sectionPoly = new THREE.Line(cutSection, sectionMaterial);
+      cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
+      sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
       parent.add(sectionPoly);
 
       var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };

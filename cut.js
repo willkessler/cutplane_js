@@ -142,7 +142,7 @@ function setupHelp() {
   text2.style.position = 'absolute';
   //text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
   text2.className = "instructions";
-  text2.innerHTML = "Hold down Command key to move Cutplane.<br>Click and drag to rotate room.<br>Mouse near faces to modify shapes."
+  text2.innerHTML = "Hold down Option key to move Cutplane.<br>Hold down command key to rotate room.<br>Mouse near faces to modify shapes."
   document.body.appendChild(text2);
 
   /* Status */
@@ -188,7 +188,7 @@ function setupCrosshair() {
     depthTest: true
   });
   var crosshairLines = new THREE.Geometry();
-  var crosshairSize = 0.1, crosshairZoffset = 0.05;
+  var crosshairSize = 0.1, crosshairZoffset = 0.01;
   crosshairLines.vertices.push(
     new THREE.Vector3 ( 0,    -crosshairSize, crosshairZoffset),
     new THREE.Vector3 ( 0,    0,              crosshairZoffset),
@@ -472,15 +472,18 @@ function updateCrosshair() {
              'rotY:', roomRotateY
   ]);
 
-    // canonical, basic mapping    
-    // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
-    // crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
+  // canonical, basic mapping    
+  // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
+  // crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
 
 }
 
 function updateCutplane() {
   if (movingCutplane) {
     var cursorXdiff = (cursor.current.x - cursor.last.x) * .01;
+    if (parent.rotation.y * RAD_TO_DEG < 0) {
+      cursorXdiff = -1 * cursorXdiff;
+    }
     //console.log('cursorXdiff is:', cursorXdiff, cursor.current.x,cursor.last.x );
     if( Math.abs(cursorXdiff) > 0 ){
       plane.position.z = Math.max(-1, Math.min(plane.position.z + cursorXdiff, 1.0));
@@ -496,8 +499,8 @@ function updateCursorTracking() {
 function render() {
   requestAnimationFrame( render );
   renderer.render( scene, camera );
-  movingCutplane = window.cmdKeyPressed;
-  rotatingRoom = window.optionKeyPressed;
+  movingCutplane = window.optionKeyPressed;
+  rotatingRoom = window.cmdKeyPressed;
 
   updateRoomView();
   updateCrosshair();

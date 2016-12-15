@@ -183,9 +183,9 @@ function debugText(displayArray) {
 }
 
 function setupLights() {
-//  var dirLight = new THREE.DirectionalLight(0xffffff, 1);
-//  dirLight.position.set(100, 100, 50);
-//  scene.add(dirLight);
+  var dirLight = new THREE.DirectionalLight(0xffffff, 1);
+  dirLight.position.set(100, 100, 50);
+  scene.add(dirLight);
   var light = new THREE.AmbientLight( 0xfffff ); // soft white light
   scene.add( light );
 }
@@ -198,7 +198,7 @@ function setupCutplane() {
   var texture = new THREE.TextureLoader().load( "images/texture4x4.png" );
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set( 200,200);
+  texture.repeat.set( 512,512);
 
   var material = new THREE.MeshLambertMaterial({map: texture, transparent:true });
   var shape = new THREE.Shape();
@@ -216,8 +216,10 @@ function setupCutplane() {
 
 function setupCrosshair() {
   var material = new THREE.LineBasicMaterial({
-    color: 'yellow',
-    depthTest: true
+    color: 0xff0000,
+    depthTest: true,
+    depthWrite: true,
+    depthFunc: THREE.AlwaysDepth
   });
   var crosshairLines = new THREE.Geometry();
   var crosshairSize = 0.1, crosshairZoffset = 0.01;
@@ -230,7 +232,7 @@ function setupCrosshair() {
     new THREE.Vector3 ( 0,    0,              crosshairZoffset),
     new THREE.Vector3 ( crosshairSize, 0,    crosshairZoffset)
   );
-  crosshair = new THREE.Line( crosshairLines );
+  crosshair = new THREE.Line( crosshairLines, material );
   crosshairPosition = { x: 0, y: 0 };
   plane.add(crosshair);
   
@@ -353,16 +355,27 @@ function setupPrimitive() {
 
 function setupJSModel() {
   var cubeSize = 0.45;
-  jsmPrimitive = new JSM.GenerateCuboid (cubeSize, cubeSize, cubeSize);
+  var pieRadius = 0.45;
+  // jsmPrimitive = new JSM.GenerateCuboid (cubeSize, cubeSize, cubeSize);
+  // radius, height, angle, segmentation, withTopAndBottom, isCurved
+  jsmPrimitive = new JSM.GeneratePie (pieRadius, 0.5, 270 * DEG_TO_RAD, 200, true,false);
 
   var materialSet = new JSM.MaterialSet ();
   materialSet.AddMaterial (new JSM.Material ({
-    ambient : 0x0,
-    diffuse : 0x666666
+    ambient : 0xffffff,
+    diffuse : 0x666600
   }));
-  for (var i = 0; i < 6; ++i) {
+  for (var i = 0; i < jsmPrimitive.polygons.length; ++i) {
     jsmPrimitive.GetPolygon(i).SetMaterialIndex(0);
   }
+
+  var rotation = JSM.RotationZTransformation (90.0 * JSM.DegRad);
+  var rotation = JSM.RotationXTransformation (-15.0 * JSM.DegRad);
+
+  var transformation = new JSM.Transformation ();
+  transformation.Append (rotation);
+  jsmPrimitive.Transform (transformation);
+
   var meshes = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
   parent.add(meshes[0]);
 }
@@ -556,7 +569,7 @@ function updateRoomView() {
     var cursorYdiff = (cursor.current.y - cursor.last.y);
     roomRotateX = Math.min(90 * DEG_TO_RAD, Math.max(0, roomRotateX + cursorYdiff * DEG_TO_RAD));
     roomRotateY = Math.min(90 * DEG_TO_RAD, Math.max(-90 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
-    console.log('roomRotateX:', roomRotateX, 'roomRotateY:', roomRotateY);
+    //console.log('roomRotateX:', roomRotateX, 'roomRotateY:', roomRotateY);
   }
   parent.rotation.x = roomRotateX;
   parent.rotation.y = roomRotateY;
@@ -654,12 +667,11 @@ setupCrosshair();
 setupHighlight();
 //setupPrimitive();
 //setupLineSegment();
-setupLights();
 
 camera.position.set( 0,0, 5);
 //controls.update();
-
 setupLights();
+
 
 
 render();

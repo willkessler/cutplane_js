@@ -2,6 +2,7 @@
 //  [X] make option key rotate the room, and remove Orbit
 //  [X] make section line properly dashed
 //  [X] figure out how to make the plane semitransparent with a semi-transparent dotted texture
+//  [X] prevent mishaps when cursor leaves the window entirely. (how will this interact with dragging?)
 //  [ ] put in jsmodeler and draw section line around that.
 //  [ ] fix cursor offset bugs
 //  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
@@ -25,6 +26,7 @@ var parent;
 var plane;
 var crosshair;
 var primitive;
+var JSMprimitive;
 var controls;
 var vertices;
 var faces;
@@ -70,6 +72,22 @@ document.onmousemove = function(e){
   cursor.current.y = e.pageY;
   //  debugText(['Cursor ', 'X:', e.pageX, 'Y:', e.pageY,  window.innerWidth, window.innerHeight]);
 }
+
+function handleMouseOut(e) {
+  console.log('leaving window');
+  window.cmdKeyPressed = false;
+  window.optionKeyPressed = false;
+  movingCutplane = false;
+  rotatingRoom = false;
+}
+
+function handleMouseEnter(e) {
+  console.log('welcome back');
+}
+
+document.body.addEventListener("mouseout", handleMouseOut, false);
+document.body.addEventListener("mouseenter", handleMouseEnter, false);
+
 
 function handleKeyDown(event) {
   console.log('key pressed:', event.keyCode);
@@ -180,9 +198,9 @@ function setupCutplane() {
   var texture = new THREE.TextureLoader().load( "images/texture4x4.png" );
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set( 200, 200 );
+  texture.repeat.set( 200,200);
 
-  var material = new THREE.MeshPhongMaterial({map: texture, transparent:true });
+  var material = new THREE.MeshLambertMaterial({map: texture, transparent:true });
   var shape = new THREE.Shape();
   shape.moveTo(-1,-1,0);
   shape.lineTo(1,-1,0);
@@ -315,7 +333,7 @@ function setupPrimitive() {
     var lineMaterial = new THREE.LineDashedMaterial( { color: 0x00cc00, dashSize: .03, gapSize: .03, linewidth: 1 } );
     var line = new THREE.Line( lineGeometry, lineMaterial );
     scene.add(line);
-*/
+
 
     var cubeSize = 0.15;
     var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
@@ -328,8 +346,25 @@ function setupPrimitive() {
     //primitive.position.x = 1.7;
     parent.add(primitive);
 
+*/
   }
 
+}
+
+function setupJSModel() {
+  var cubeSize = 0.45;
+  jsmPrimitive = new JSM.GenerateCuboid (cubeSize, cubeSize, cubeSize);
+
+  var materialSet = new JSM.MaterialSet ();
+  materialSet.AddMaterial (new JSM.Material ({
+    ambient : 0x0,
+    diffuse : 0x666666
+  }));
+  for (var i = 0; i < 6; ++i) {
+    jsmPrimitive.GetPolygon(i).SetMaterialIndex(0);
+  }
+  var meshes = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
+  parent.add(meshes[0]);
 }
 
 function setupHighlight() {
@@ -551,6 +586,7 @@ parent = new THREE.Object3D();
 scene.add( parent );
 
 
+setupJSModel();
 setupHelp();
 setupCutplane();
 setupRoom();

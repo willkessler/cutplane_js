@@ -372,6 +372,9 @@ function setupHighlight() {
   var geometry = new THREE.CircleGeometry(radius,20);
   var material = new THREE.MeshBasicMaterial( { 
     color: 0xff0000,
+    depthTest: false, // so that we can always see the section line
+    depthWrite: false,
+    depthFunc: THREE.AlwaysDepth,
     side: THREE.DoubleSide, 
     opacity: 1.0 } );
   highlight = new THREE.Mesh( geometry, material );
@@ -444,6 +447,63 @@ function drawSectionLine() {
     }
     P0 = new THREE.Vector3(vertices[face[faceLen - 1]].x,vertices[face[faceLen - 1 ]].y,vertices[face[faceLen - 1]].z);
     P1 = new THREE.Vector3(vertices[face[0]].x,vertices[face[0]].y,vertices[face[0]].z);
+    var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+    if (intersection.intersected) {
+      sectionExists = true;
+      cutSection.vertices.push(
+        new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
+      );
+      sectionPoints.push(intersection.intersectPoint);
+    }
+    if (sectionPoly) {
+      parent.remove(sectionPoly);
+    }
+    if (sectionExists) {
+      //console.log('we will draw a section line');
+      cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
+      sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
+      parent.add(sectionPoly);
+
+      var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+      for (var k = 0; k < sectionPoints.length - 1; ++k) {
+        var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
+        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+          nearestMin = nearest.distance;
+          highlightCenter.x = nearest.nearestPoint.x;
+          highlightCenter.y = nearest.nearestPoint.y;
+        }          
+      }
+      highlight.position.x = highlightCenter.x;
+      highlight.position.y = highlightCenter.y;
+      highlight.position.z = plane.position.z + 0.01;
+    }
+  }
+}
+
+function drawSectionLineJSM() {
+  var P0, P1;
+  var cutSection = new THREE.Geometry();
+  var sectionExists = false;
+  var faceLen;
+  var sectionPoints = [];
+  var vertices = jsmPrimitive.vertices;
+  for (var i = 0; i < jsmPrimitive.polygons.length; ++i) {
+    face = jsmPrimitive.polygons[i].vertices;
+    faceLen = face.length;
+    for (var j = 0; j < faceLen - 1; ++j) {
+      P0 = new THREE.Vector3(vertices[face[j]].position.x,vertices[face[j]].position.y,vertices[face[j]].position.z);
+      P1 = new THREE.Vector3(vertices[face[j + 1]].position.x,vertices[face[j + 1]].position.y,vertices[face[j + 1]].position.z);
+      var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+      if (intersection.intersected) {
+        sectionExists = true;
+        cutSection.vertices.push(
+          new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
+        );
+        sectionPoints.push(intersection.intersectPoint);
+      }
+    }
+    P0 = new THREE.Vector3(vertices[face[faceLen - 1]].position.x,vertices[face[faceLen - 1 ]].position.y,vertices[face[faceLen - 1]].position.z);
+    P1 = new THREE.Vector3(vertices[face[0]].position.x,vertices[face[0]].position.y,vertices[face[0]].position.z);
     var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
     if (intersection.intersected) {
       sectionExists = true;
@@ -566,7 +626,7 @@ function render() {
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
-  drawSectionLine();
+  drawSectionLineJSM();
 }
 
 var scene = new THREE.Scene();
@@ -592,7 +652,7 @@ setupCutplane();
 setupRoom();
 setupCrosshair();
 setupHighlight();
-setupPrimitive();
+//setupPrimitive();
 //setupLineSegment();
 setupLights();
 

@@ -356,14 +356,14 @@ function setupPrimitive() {
 function setupJSModel() {
   var cubeSize = 0.45;
   var pieRadius = 0.45;
-  // jsmPrimitive = new JSM.GenerateCuboid (cubeSize, cubeSize, cubeSize);
+  //jsmPrimitive = new JSM.GenerateCuboid (cubeSize, cubeSize, cubeSize);
   // radius, height, angle, segmentation, withTopAndBottom, isCurved
   jsmPrimitive = new JSM.GeneratePie (pieRadius, 0.5, 270 * DEG_TO_RAD, 200, true,false);
 
   var materialSet = new JSM.MaterialSet ();
   materialSet.AddMaterial (new JSM.Material ({
     ambient : 0xffffff,
-    diffuse : 0x666600
+    diffuse : 0x3333ff
   }));
   for (var i = 0; i < jsmPrimitive.polygons.length; ++i) {
     jsmPrimitive.GetPolygon(i).SetMaterialIndex(0);
@@ -495,58 +495,97 @@ function drawSectionLine() {
 
 function drawSectionLineJSM() {
   var P0, P1;
-  var cutSection = new THREE.Geometry();
   var sectionExists = false;
   var faceLen;
-  var sectionPoints = [];
   var vertices = jsmPrimitive.vertices;
+  var sectionEdges = {};
+  var sectionEdgesCount = 0;
+  var iKey1, iKey2, finalIKey, intersection, intersections;
   for (var i = 0; i < jsmPrimitive.polygons.length; ++i) {
     face = jsmPrimitive.polygons[i].vertices;
     faceLen = face.length;
-    for (var j = 0; j < faceLen - 1; ++j) {
+    intersections = [];
+    /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
+    for (var j = 0; j < faceLen; ++j) {
+      //console.log('i:',i,'j:',j);
       P0 = new THREE.Vector3(vertices[face[j]].position.x,vertices[face[j]].position.y,vertices[face[j]].position.z);
-      P1 = new THREE.Vector3(vertices[face[j + 1]].position.x,vertices[face[j + 1]].position.y,vertices[face[j + 1]].position.z);
-      var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+      P1 = new THREE.Vector3(vertices[face[(j + 1) % faceLen]].position.x,vertices[face[(j + 1) % faceLen]].position.y,vertices[face[(j + 1) % faceLen]].position.z);
+      intersection = intersectLineWithPlane(P0, P1, plane.position.z);
       if (intersection.intersected) {
+        intersections.push(intersection);
+        //console.log('found intersection: ', intersection.intersectPoint);
+      }
+      if (intersections.length == 2) {
         sectionExists = true;
-        cutSection.vertices.push(
-          new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
-        );
-        sectionPoints.push(intersection.intersectPoint);
+        iKey1 = intersections[0].intersectPoint.x + '_' + intersections[0].intersectPoint.y;
+        iKey2 = intersections[1].intersectPoint.x + '_' + intersections[1].intersectPoint.y;
+        finalIKey = iKey2;
+        if (!sectionEdges.hasOwnProperty(iKey1)) {
+          sectionEdges[iKey1] = [];
+        }
+        sectionEdges[iKey1].push(iKey2);
+        if (!sectionEdges.hasOwnProperty(iKey2)) {
+          sectionEdges[iKey2] = [];
+        }
+        sectionEdges[iKey2].push(iKey1);
+        intersections = [];
+        sectionEdgesCount++;
       }
     }
-    P0 = new THREE.Vector3(vertices[face[faceLen - 1]].position.x,vertices[face[faceLen - 1 ]].position.y,vertices[face[faceLen - 1]].position.z);
-    P1 = new THREE.Vector3(vertices[face[0]].position.x,vertices[face[0]].position.y,vertices[face[0]].position.z);
-    var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
-    if (intersection.intersected) {
-      sectionExists = true;
-      cutSection.vertices.push(
-        new THREE.Vector3(intersection.intersectPoint.x,intersection.intersectPoint.y,intersection.intersectPoint.z + 0.01)
-      );
-      sectionPoints.push(intersection.intersectPoint);
-    }
-    if (sectionPoly) {
-      parent.remove(sectionPoly);
-    }
-    if (sectionExists) {
-      //console.log('we will draw a section line');
-      cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
-      sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
-      parent.add(sectionPoly);
+  }
 
-      var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
-      for (var k = 0; k < sectionPoints.length - 1; ++k) {
-        var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
-        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
-          nearestMin = nearest.distance;
-          highlightCenter.x = nearest.nearestPoint.x;
-          highlightCenter.y = nearest.nearestPoint.y;
-        }          
+  if (sectionPoly) {
+    parent.remove(sectionPoly);
+  }
+
+  if (sectionExists) {
+
+    /* Now start at final iKey on the sectionEdges array, and walk it to build up section lines */
+    var sectionPoints = [];
+    var walked = { };
+    var numWalked = 0;
+    var currentIKey = finalIKey;
+    var cutSection = new THREE.Geometry();
+    var sectionCoord;
+
+    while (numWalked < sectionEdgesCount) {
+      coords = currentIKey.split('_');
+      sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
+      cutSection.vertices.push(sectionCoord);
+      sectionPoints.push({x: coords[0],y:coords[1]});
+      numWalked++;
+      walked[currentIKey] = true;
+      if (sectionEdges[currentIKey][0] && (!walked.hasOwnProperty(sectionEdges[currentIKey][0]))) {
+        currentIKey = sectionEdges[currentIKey][0];
+      } else if (sectionEdges[currentIKey][1] && (!walked.hasOwnProperty(sectionEdges[currentIKey][1]))) {
+        currentIKey = sectionEdges[currentIKey][1];
       }
-      highlight.position.x = highlightCenter.x;
-      highlight.position.y = highlightCenter.y;
-      highlight.position.z = plane.position.z + 0.01;
     }
+    /* To close the loop, add back the finalIKey. Note that this whole approach fails on multiple loops like torii. */
+    coords = finalIKey.split('_');
+    sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
+    cutSection.vertices.push(sectionCoord);
+    sectionPoints.push({x: coords[0],y:coords[1]});
+
+    //debugger;
+
+    //console.log('we will draw a section line');
+    cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
+    sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
+    parent.add(sectionPoly);
+
+    var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+    for (var k = 0; k < sectionPoints.length - 1; ++k) {
+      var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
+      if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+        nearestMin = nearest.distance;
+        highlightCenter.x = nearest.nearestPoint.x;
+        highlightCenter.y = nearest.nearestPoint.y;
+      }          
+    }
+    highlight.position.x = highlightCenter.x;
+    highlight.position.y = highlightCenter.y;
+    highlight.position.z = plane.position.z + 0.01;
   }
 }
 

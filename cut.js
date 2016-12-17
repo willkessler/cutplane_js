@@ -3,13 +3,14 @@
 //  [X] make section line properly dashed
 //  [X] figure out how to make the plane semitransparent with a semi-transparent dotted texture
 //  [X] prevent mishaps when cursor leaves the window entirely. (how will this interact with dragging?)
-//  [ ] put in jsmodeler and draw section line around that.
-//  [ ] fix cursor offset bugs
+//  [X] put in jsmodeler and draw section line around that.
+//  [ ] support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
+//  [ ] allow you to grab edges and faces and drag them: update the model
+//  [ ] fix cursor offset bugs: try new algo where i just move based on mouse movesn
 //  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
 //      https://en.wikipedia.org/wiki/Vector_projection
 //      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
 //  [ ] make cursor look more like the old cursor
-//  [ ] allow you to grab edges and faces and drag them: update the model
 //  
 //  [ ] restore the rotate tool
 //  [ ] restore booleans
@@ -210,6 +211,8 @@ function setupCutplane() {
 
   var geometry = new THREE.ShapeGeometry( shape );
   plane = new THREE.Mesh( geometry, material ) ;
+  /* hack */
+  plane.position.z = -0.22;
 
   parent.add(plane);
 }
@@ -358,7 +361,8 @@ function setupJSModel() {
   var pieRadius = 0.45;
   //jsmPrimitive = new JSM.GenerateCuboid (cubeSize, cubeSize, cubeSize);
   // radius, height, angle, segmentation, withTopAndBottom, isCurved
-  jsmPrimitive = new JSM.GeneratePie (pieRadius, 0.5, 270 * DEG_TO_RAD, 200, true,false);
+  //jsmPrimitive = new JSM.GeneratePie (pieRadius, 0.5, 270 * DEG_TO_RAD, 200, true,false);
+  jsmPrimitive = JSM.GenerateTorus (pieRadius, 0.25, 50, 50, true);
 
   var materialSet = new JSM.MaterialSet ();
   materialSet.AddMaterial (new JSM.Material ({
@@ -369,8 +373,9 @@ function setupJSModel() {
     jsmPrimitive.GetPolygon(i).SetMaterialIndex(0);
   }
 
-  var rotation = JSM.RotationZTransformation (90.0 * JSM.DegRad);
-  var rotation = JSM.RotationXTransformation (-15.0 * JSM.DegRad);
+  //var rotation = JSM.RotationZTransformation (90.0 * JSM.DegRad);
+  //var rotation = JSM.RotationXTransformation (-15.0 * JSM.DegRad);
+  var rotation = JSM.RotationXTransformation (-90.0 * JSM.DegRad);
 
   var transformation = new JSM.Transformation ();
   transformation.Append (rotation);
@@ -517,8 +522,8 @@ function drawSectionLineJSM() {
       }
       if (intersections.length == 2) {
         sectionExists = true;
-        iKey1 = intersections[0].intersectPoint.x + '_' + intersections[0].intersectPoint.y;
-        iKey2 = intersections[1].intersectPoint.x + '_' + intersections[1].intersectPoint.y;
+        iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
+        iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
         finalIKey = iKey2;
         if (!sectionEdges.hasOwnProperty(iKey1)) {
           sectionEdges[iKey1] = [];

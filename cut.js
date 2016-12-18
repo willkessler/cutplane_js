@@ -31,7 +31,6 @@ var JSMprimitive;
 var controls;
 var vertices;
 var faces;
-var sectionPoly;
 var highlight;
 var movingCutplane = false;
 var startCursorPauseTime;
@@ -42,6 +41,7 @@ var rotatingRoom = true;
 var wasRotatingRoom = false;
 var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
+var cutSections;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -374,7 +374,7 @@ function setupJSModel() {
   }
 
   //var rotation = JSM.RotationZTransformation (90.0 * JSM.DegRad);
-  //var rotation = JSM.RotationXTransformation (-15.0 * JSM.DegRad);
+  var rotation = JSM.RotationXTransformation (-15.0 * JSM.DegRad);
   var rotation = JSM.RotationXTransformation (-90.0 * JSM.DegRad);
 
   var transformation = new JSM.Transformation ();
@@ -473,9 +473,7 @@ function drawSectionLine() {
       );
       sectionPoints.push(intersection.intersectPoint);
     }
-    if (sectionPoly) {
-      parent.remove(sectionPoly);
-    }
+    parent.remove(sectionPoly);
     if (sectionExists) {
       //console.log('we will draw a section line');
       cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
@@ -539,9 +537,12 @@ function drawSectionLineJSM() {
     }
   }
 
-  if (sectionPoly) {
-    parent.remove(sectionPoly);
+  /* Delete all previous cutSection polygons */
+  if (cutSections) {
+    parent.remove(cutSections);
   }
+  cutSections = new THREE.Object3D();
+  parent.add(cutSections);
 
   if (sectionExists) {
 
@@ -549,9 +550,12 @@ function drawSectionLineJSM() {
     var sectionPoints = [];
     var walked = { };
     var numWalked = 0;
-    var currentIKey = finalIKey;
+    var currentIKey = finalIKey, nextIKey;
+    var startLoopIKey = finalIKey;
     var cutSection = new THREE.Geometry();
     var sectionCoord;
+    var endedCurrentLoop;
+    var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
 
     while (numWalked < sectionEdgesCount) {
       coords = currentIKey.split('_');
@@ -560,34 +564,61 @@ function drawSectionLineJSM() {
       sectionPoints.push({x: coords[0],y:coords[1]});
       numWalked++;
       walked[currentIKey] = true;
+      
+      nextIKey = undefined;
       if (sectionEdges[currentIKey][0] && (!walked.hasOwnProperty(sectionEdges[currentIKey][0]))) {
-        currentIKey = sectionEdges[currentIKey][0];
+        nextIKey = sectionEdges[currentIKey][0];
       } else if (sectionEdges[currentIKey][1] && (!walked.hasOwnProperty(sectionEdges[currentIKey][1]))) {
-        currentIKey = sectionEdges[currentIKey][1];
+        nextIKey = sectionEdges[currentIKey][1];
       }
+      /* If we got through one loop, we will not be able to advance. Scan through the section edges to find an unwalked starting point. */
+      endedCurrentLoop = false;
+      if (nextIKey == undefined) {
+        endedCurrentLoop = true;
+        /* Find a candidate to start a new loop, if we can. */
+        for (var seKey in sectionEdges) {
+          if (sectionEdges.hasOwnProperty(seKey)) {
+            if (!walked.hasOwnProperty(seKey)) {
+              nextIKey = seKey;
+              break;
+            }
+          }
+        }
+      }
+      /* To close the loop, add back the finalIKey. */
+      if (endedCurrentLoop) {
+        coords = startLoopIKey.split('_');
+        sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
+        cutSection.vertices.push(sectionCoord);
+        sectionPoints.push({x: coords[0],y:coords[1]});
+
+        cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
+        sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
+        cutSections.add(sectionPoly);
+
+
+        for (var k = 0; k < sectionPoints.length - 1; ++k) {
+          var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
+          if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+            nearestMin = nearest.distance;
+            highlightCenter.x = nearest.nearestPoint.x;
+            highlightCenter.y = nearest.nearestPoint.y;
+          }          
+        }
+        //debugger;
+
+
+        cutSection = new THREE.Geometry();
+        if (nextIKey) {
+          startLoopIKey = nextIKey;
+        }
+      }
+
+      /* Advance from here on current loop or newly started loop */
+      currentIKey = nextIKey;
     }
-    /* To close the loop, add back the finalIKey. Note that this whole approach fails on multiple loops like torii. */
-    coords = finalIKey.split('_');
-    sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
-    cutSection.vertices.push(sectionCoord);
-    sectionPoints.push({x: coords[0],y:coords[1]});
 
-    //debugger;
-
-    //console.log('we will draw a section line');
-    cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
-    sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
-    parent.add(sectionPoly);
-
-    var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
-    for (var k = 0; k < sectionPoints.length - 1; ++k) {
-      var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
-      if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
-        nearestMin = nearest.distance;
-        highlightCenter.x = nearest.nearestPoint.x;
-        highlightCenter.y = nearest.nearestPoint.y;
-      }          
-    }
+    /* Render highlight if near a sections loop */
     highlight.position.x = highlightCenter.x;
     highlight.position.y = highlightCenter.y;
     highlight.position.z = plane.position.z + 0.01;
@@ -652,6 +683,28 @@ function updateCrosshair() {
   // canonical, basic mapping    
   // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
   // crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
+
+}
+
+/* Version that moves by deltas. This doesn't work at all because you cant "pick up the mouse" with a trackpad. */
+function updateCrosshair2() {
+  // Offset crosshair based on mouse move.
+  
+  if (!movingCutplane && !rotatingRoom) {
+    var offsetX = ((cursor.current.x - cursor.last.x) / window.innerWidth) * 2.0;
+    var offsetY = ((cursor.current.y - cursor.last.y) / window.innerHeight) * -2.0;
+    crosshair.position.x = Math.max(-1, Math.min(1.0, crosshair.position.x + offsetX));
+    crosshair.position.y = Math.max(-1, Math.min(1.0, crosshair.position.y + offsetY));
+  }
+
+  debugText(['Crosshair set', 
+             'cursorX:', cursor.current.x,
+             'cursorY:', cursor.current.y,
+             'X:', crosshair.position.x, 
+             'Y:', crosshair.position.y,
+             'rotX:', roomRotateX,
+             'rotY:', roomRotateY
+  ]);
 
 }
 

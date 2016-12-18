@@ -35,10 +35,10 @@ var highlight;
 var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
-var cursorAdjust = { x: 0, y:0 };
-var cursorPreMove = { x: 0, y:0 };
-var rotatingRoom = true;
 var wasRotatingRoom = false;
+var cursorAdjust =  { x: 0, y: 0 };
+var cursorPreMove = { x: 0, y: 0 };
+var rotatingRoom = true;
 var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
@@ -654,17 +654,18 @@ function updateRoomView() {
 // http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
 function updateCrosshair() {
   /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
-  if (wasMovingPlane != movingCutplane) {
-    if (wasMovingPlane) {
-      console.log('Stopped moving plane, calculating adjustment.');
+  if ((wasMovingPlane != movingCutplane) || (wasRotatingRoom != rotatingRoom)) {
+    if (wasMovingPlane || wasRotatingRoom) {
+      console.log('Stopped moving plane or rotating, calculating adjustment.');
       cursorAdjust.x = cursorAdjust.x + (cursorPreMove.x - cursor.current.x);
       cursorAdjust.y = cursorAdjust.y + (cursorPreMove.y - cursor.current.y);
     } else {
-      console.log('started moving plane, saving cursor position');
+      console.log('started moving plane or rotating, saving cursor position');
       cursorPreMove.x = cursor.current.x;
       cursorPreMove.y = cursor.current.y;
     }
     wasMovingPlane = movingCutplane;
+    wasRotatingRoom = rotatingRoom;
   }
   if (!movingCutplane && !rotatingRoom) {
     crosshair.position.x = ( 2.0 * ((cursor.current.x + cursorAdjust.x) / window.innerWidth))  - 1.0;
@@ -674,10 +675,12 @@ function updateCrosshair() {
   debugText(['Crosshair set', 
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
-             'X:', crosshair.position.x, 
-             'Y:', crosshair.position.y,
-             'rotX:', roomRotateX,
-             'rotY:', roomRotateY
+             'X:',       crosshair.position.x, 
+             'Y:',       crosshair.position.y,
+             'rotX:',    roomRotateX,
+             'rotY:',    roomRotateY,
+             'cursorAdjust.X:', cursorAdjust.x,
+             'cursorAdjust.Y:', cursorAdjust.y
   ]);
 
   // canonical, basic mapping    

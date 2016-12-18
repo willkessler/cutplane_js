@@ -209,11 +209,18 @@ function setupCutplane() {
   shape.lineTo(-1,1,0);
   shape.lineTo(-1,-1,0);
 
-  var geometry = new THREE.ShapeGeometry( shape );
-  plane = new THREE.Mesh( geometry, material ) ;
-  /* hack */
-  plane.position.z = -0.22;
+  plane = new THREE.Object3D();
 
+  var geometry = new THREE.ShapeGeometry( shape );
+  planeTexture = new THREE.Mesh( geometry, material ) ;
+  plane.add(planeTexture);
+  /* hack */
+
+  var planeBorder = new THREE.Line( geometry, lineMaterial);
+  planeBorder.position.z = plane.position.z;
+  plane.add(planeBorder);
+
+  plane.position.z = -0.22;
   parent.add(plane);
 }
 

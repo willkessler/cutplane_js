@@ -236,7 +236,8 @@ function setupCrosshair() {
     new THREE.Vector3 ( crosshairSize, 0,    crosshairZoffset)
   );
   crosshair = new THREE.Line( crosshairLines, material );
-  crosshairPosition = { x: 0, y: 0 };
+  crosshair.position.x = 0; 
+  crosshair.position.y = 0;
   plane.add(crosshair);
   
 }
@@ -607,7 +608,6 @@ function drawSectionLineJSM() {
         }
         //debugger;
 
-
         cutSection = new THREE.Geometry();
         if (nextIKey) {
           startLoopIKey = nextIKey;
@@ -668,8 +668,8 @@ function updateCrosshair() {
     wasRotatingRoom = rotatingRoom;
   }
   if (!movingCutplane && !rotatingRoom) {
-    crosshair.position.x = ( 2.0 * ((cursor.current.x + cursorAdjust.x) / window.innerWidth))  - 1.0;
-    crosshair.position.y = (-2.0 * ((cursor.current.y + cursorAdjust.y) / window.innerHeight)) + 1.0;
+    crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
+    crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
   }
 
   debugText(['Crosshair set', 
@@ -771,7 +771,5 @@ setupHighlight();
 camera.position.set( 0,0, 5);
 //controls.update();
 setupLights();
-
-
 
 render();

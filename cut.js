@@ -228,7 +228,7 @@ function setupCutplane() {
 }
 
 function setupCrosshair() {
-  var crosshairSize = 0.2;
+  var crosshairSize = 0.05, crosshairOffset = 0.02;
   var crosshairMaterial = new THREE.LineBasicMaterial({
     color: 0xffff00,
     side: THREE.DoubleSide,
@@ -241,9 +241,20 @@ function setupCrosshair() {
 
   var crosshairCube = new THREE.BoxGeometry( crosshairSize, 0.01, 0.01 );
   var crosshairSlab = new THREE.Mesh( crosshairCube, crosshairMaterial );
+  crosshairSlab.position.x = -crosshairSize / 2 - crosshairOffset;
   crosshair.add(crosshairSlab);
+
+  crosshairSlab = new THREE.Mesh( crosshairCube, crosshairMaterial );
+  crosshairSlab.position.x = crosshairSize / 2 + crosshairOffset;
+  crosshair.add(crosshairSlab);
+
   crosshairCube = new THREE.BoxGeometry( 0.01, crosshairSize, 0.01 );
   crosshairSlab = new THREE.Mesh( crosshairCube, crosshairMaterial );
+  crosshairSlab.position.y = -crosshairSize / 2 - crosshairOffset;
+  crosshair.add(crosshairSlab);
+
+  crosshairSlab = new THREE.Mesh( crosshairCube, crosshairMaterial );
+  crosshairSlab.position.y = crosshairSize / 2 + crosshairOffset;
   crosshair.add(crosshairSlab);
 
   var material2 = new THREE.MeshBasicMaterial({

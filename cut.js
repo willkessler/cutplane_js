@@ -4,6 +4,7 @@
 //  [X] figure out how to make the plane semitransparent with a semi-transparent dotted texture
 //  [X] prevent mishaps when cursor leaves the window entirely. (how will this interact with dragging?)
 //  [X] put in jsmodeler and draw section line around that.
+//  [ ] handle leaving the window more gracefully, if rotating or draggin especially
 //  [ ] support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [ ] allow you to grab edges and faces and drag them: update the model
 //  [ ] fix cursor offset bugs: try new algo where i just move based on mouse movesn
@@ -83,7 +84,9 @@ function handleMouseOut(e) {
 }
 
 function handleMouseEnter(e) {
-  console.log('welcome back');
+  console.log('welcome back, resetting cursorAdjust');
+  cursorAdjust.x = 0; 
+  cursorAdjust.y = 0;
 }
 
 document.body.addEventListener("mouseout", handleMouseOut, false);
@@ -225,28 +228,39 @@ function setupCutplane() {
 }
 
 function setupCrosshair() {
-  var material = new THREE.LineBasicMaterial({
-    color: 0xff0000,
-    depthTest: true,
-    depthWrite: true,
+  var crosshairSize = 0.2;
+  var crosshairMaterial = new THREE.LineBasicMaterial({
+    color: 0xffff00,
+    side: THREE.DoubleSide,
+    depthTest: false,
+    depthWrite: false,
     depthFunc: THREE.AlwaysDepth
   });
-  var crosshairLines = new THREE.Geometry();
-  var crosshairSize = 0.1, crosshairZoffset = 0.01;
-  crosshairLines.vertices.push(
-    new THREE.Vector3 ( 0,    -crosshairSize, crosshairZoffset),
-    new THREE.Vector3 ( 0,    0,              crosshairZoffset),
-    new THREE.Vector3 ( -crosshairSize, 0,    crosshairZoffset),
-    new THREE.Vector3 ( 0,    0,              crosshairZoffset),
-    new THREE.Vector3 ( 0,     crosshairSize, crosshairZoffset),
-    new THREE.Vector3 ( 0,    0,              crosshairZoffset),
-    new THREE.Vector3 ( crosshairSize, 0,    crosshairZoffset)
-  );
-  crosshair = new THREE.Line( crosshairLines, material );
+
+  crosshair = new THREE.Object3D();
+
+  var crosshairCube = new THREE.BoxGeometry( crosshairSize, 0.01, 0.01 );
+  var crosshairSlab = new THREE.Mesh( crosshairCube, crosshairMaterial );
+  crosshair.add(crosshairSlab);
+  crosshairCube = new THREE.BoxGeometry( 0.01, crosshairSize, 0.01 );
+  crosshairSlab = new THREE.Mesh( crosshairCube, crosshairMaterial );
+  crosshair.add(crosshairSlab);
+
+  var material2 = new THREE.MeshBasicMaterial({
+    color: 0xffff00,
+    depthTest: false,
+    depthWrite: false,
+    depthFunc: THREE.AlwaysDepth
+  });
+
+
   crosshair.position.x = 0; 
   crosshair.position.y = 0;
-  plane.add(crosshair);
+  crosshair.position.z = 0.01;
   
+  
+  plane.add(crosshair);
+
 }
 
 function setupRoom() {
@@ -346,7 +360,7 @@ function setupPrimitive() {
     var lineMaterial = new THREE.LineDashedMaterial( { color: 0x00cc00, dashSize: .03, gapSize: .03, linewidth: 1 } );
     var line = new THREE.Line( lineGeometry, lineMaterial );
     scene.add(line);
-
+*/
 
     var cubeSize = 0.15;
     var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
@@ -359,7 +373,7 @@ function setupPrimitive() {
     //primitive.position.x = 1.7;
     parent.add(primitive);
 
-*/
+
   }
 
 }
@@ -601,7 +615,7 @@ function drawSectionLineJSM() {
         sectionPoints.push({x: coords[0],y:coords[1]});
 
         cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
-        sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
+        var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
         cutSections.add(sectionPoly);
 
 

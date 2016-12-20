@@ -5,13 +5,13 @@
 //  [X] prevent mishaps when cursor leaves the window entirely. (how will this interact with dragging?)
 //  [X] put in jsmodeler and draw section line around that.
 //  [X] handle leaving the window more gracefully, if rotating or draggin especially
-//  [ ] support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
-//  [ ] allow you to grab edges and faces and drag them: update the model
-//  [ ] fix cursor offset bugs: try new algo where i just move based on mouse movesn
+//  [X] Fix cursor offset bugs: try new algo where i just move based on mouse movesn
+//  [X] make cursor look more like the old cursor
+//  [ ] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
+//  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
 //      https://en.wikipedia.org/wiki/Vector_projection
 //      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
-//  [ ] make cursor look more like the old cursor
 //  
 //  [ ] restore the rotate tool
 //  [ ] restore booleans
@@ -28,7 +28,8 @@ var parent;
 var plane;
 var crosshair;
 var primitive;
-var JSMprimitive;
+var jsmPrimitive;
+var jsmPrimitiveMesh;
 var controls;
 var vertices;
 var faces;
@@ -43,6 +44,7 @@ var rotatingRoom = true;
 var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
+var objectSelectable = false;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -165,12 +167,14 @@ function distToSegment(p, v, w) {
 
 
 /* from: https://github.com/substack/point-in-polygon/blob/master/index.js */
-function pointInPoly (point, poly, polyLength) {
+function pointInPoly (point, poly) {
   // ray-casting algorithm based on
   // http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
   // This is designed to use polygons where first vertex does not repeat at the end of the polygon which is what you get with a 
   // closed polygon from THREE.js vertices array.
   // So we pass a shorter polygon length in.
+  //debugger;
+  var polyLength = poly.length;
   var inside = false;
   var i = 0;
   var j = polyLength - 1;
@@ -189,6 +193,39 @@ function pointInPoly (point, poly, polyLength) {
   
   return inside;
 };
+
+function intersectLineWithPlane(P0, P1, planeZ) {
+  var n =  new THREE.Vector3(0,0,1); // normal vector to cutplane
+  var u = new THREE.Vector3();
+  u.copy(P1);
+  u = u.sub(P0);
+  //console.log('u:', u);
+  var nDotU = n.dot(u);
+  //console.log('nDotU:', nDotU);
+  var V0 = new THREE.Vector3(0,0,plane.position.z); // point on the plane
+  var V0MinusP0 = new THREE.Vector3();
+  V0MinusP0.copy(V0);
+  V0MinusP0.sub(P0);
+  var nDotV0MinusP0 = n.dot(V0MinusP0);
+  //console.log('nDotV0MinusP0:', nDotV0MinusP0);
+  var s1 = (nDotV0MinusP0  / nDotU);
+  //console.log('s1:' , s1);
+  if ((s1 >= 0.0) && (s1 <= 1.0)) {
+    var intersectPoint = new THREE.Vector3();
+    intersectPoint.copy(P0);
+    var offset = u.multiplyScalar(s1);
+    intersectPoint.add(offset);
+    return({intersected: true,
+            intersectPoint: intersectPoint
+    });
+  } else {
+    return({intersected: false});
+  }
+}
+
+// --------------------------------------------------------------------------------
+// Setup functions
+// --------------------------------------------------------------------------------
 
 function setupHelp() {
   var text2 = document.createElement('div');
@@ -440,8 +477,8 @@ function setupJSModel() {
   transformation.Append (rotation);
   jsmPrimitive.Transform (transformation);
 
-  var meshes = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
-  parent.add(meshes[0]);
+  jsmPrimitiveMesh = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
+  parent.add(jsmPrimitiveMesh[0]);
 }
 
 function setupHighlight() {
@@ -470,34 +507,9 @@ function setupLineSegment() {
   parent.add(line);
 }
 
-function intersectLineWithPlane(P0, P1, planeZ) {
-  var n =  new THREE.Vector3(0,0,1); // normal vector to cutplane
-  var u = new THREE.Vector3();
-  u.copy(P1);
-  u = u.sub(P0);
-  //console.log('u:', u);
-  var nDotU = n.dot(u);
-  //console.log('nDotU:', nDotU);
-  var V0 = new THREE.Vector3(0,0,plane.position.z); // point on the plane
-  var V0MinusP0 = new THREE.Vector3();
-  V0MinusP0.copy(V0);
-  V0MinusP0.sub(P0);
-  var nDotV0MinusP0 = n.dot(V0MinusP0);
-  //console.log('nDotV0MinusP0:', nDotV0MinusP0);
-  var s1 = (nDotV0MinusP0  / nDotU);
-  //console.log('s1:' , s1);
-  if ((s1 >= 0.0) && (s1 <= 1.0)) {
-    var intersectPoint = new THREE.Vector3();
-    intersectPoint.copy(P0);
-    var offset = u.multiplyScalar(s1);
-    intersectPoint.add(offset);
-    return({intersected: true,
-            intersectPoint: intersectPoint
-    });
-  } else {
-    return({intersected: false});
-  }
-}
+// --------------------------------------------------------------------------------
+// Main interaction functions
+// --------------------------------------------------------------------------------
 
 
 // http://geomalgorithms.com/a05-_intersect-1.html
@@ -658,10 +670,6 @@ function drawSectionLineJSM() {
         var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
         cutSections.add(sectionPoly);
 
-        if (pointInPoly(crosshair.position, cutSection.vertices, cutSection.vertices.length)) {
-          console.log('inside section line');
-        }
-
         cutSection = new THREE.Geometry();
         if (nextIKey) {
           startLoopIKey = nextIKey;
@@ -690,6 +698,11 @@ function drawSectionLineJSM() {
     highlight.position.z = plane.position.z + 0.01;
   }
 }
+
+// --------------------------------------------------------------------------------
+// Update functions
+// --------------------------------------------------------------------------------
+
 
 function updateRoomView() {
   if (wasRotatingRoom != rotatingRoom) {
@@ -793,6 +806,44 @@ function updateCursorTracking() {
   cursor.last.y = cursor.current.y;
 }
 
+function updateObjectHighlights() {
+  var highlightObject = 0;
+  if (cutSections.children.length > 0) {
+    var cutSection;
+    for (var i = 0; i < cutSections.children.length; ++i) {
+      cutSection = cutSections.children[i];
+      if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
+        console.log('inside section line');
+        highlightObject = 1;
+      }
+    }
+  }
+
+  var materialSet = new JSM.MaterialSet ();
+  materialSet.AddMaterial (new JSM.Material ({
+    ambient : 0xffffff,
+    diffuse : 0x3333ff
+  }));
+  materialSet.AddMaterial (new JSM.Material ({
+    ambient : 0xffffff,
+    diffuse : 0xffffff
+  }));
+
+  for (var j = 0; j < jsmPrimitive.polygons.length; ++j) {
+    jsmPrimitive.GetPolygon(j).SetMaterialIndex(highlightObject);
+  }
+  
+  //parent.remove(jsmPrimitiveMesh[0]);
+  //jsmPrimitiveMesh = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
+  //  parent.add(jsmPrimitiveMesh[0]);
+
+}
+
+// --------------------------------------------------------------------------------
+// Main loop begins
+// --------------------------------------------------------------------------------
+
+
 function render() {
   requestAnimationFrame( render );
   renderer.render( scene, camera );
@@ -804,6 +855,7 @@ function render() {
   updateCutplane();
   updateCursorTracking();
   drawSectionLineJSM();
+  updateObjectHighlights();
 }
 
 var scene = new THREE.Scene();
@@ -837,11 +889,3 @@ camera.position.set( 0,0, 5);
 setupLights();
 
 render();
-
-var check = { x: -1, y:0 };
-var poly = [ {x: -0.225, y:0.225 },
-             {x: -0.225, y:-0.225 },
-             {x: 0.225,  y:-0.225 },
-             {x: 0.225,  y:0.225 }
-];
-console.log('pointInPoly', pointInPoly(check, poly, poly.length));

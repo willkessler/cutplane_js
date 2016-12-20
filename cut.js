@@ -4,7 +4,7 @@
 //  [X] figure out how to make the plane semitransparent with a semi-transparent dotted texture
 //  [X] prevent mishaps when cursor leaves the window entirely. (how will this interact with dragging?)
 //  [X] put in jsmodeler and draw section line around that.
-//  [ ] handle leaving the window more gracefully, if rotating or draggin especially
+//  [X] handle leaving the window more gracefully, if rotating or draggin especially
 //  [ ] support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [ ] allow you to grab edges and faces and drag them: update the model
 //  [ ] fix cursor offset bugs: try new algo where i just move based on mouse movesn
@@ -163,6 +163,32 @@ function distToSegment(p, v, w) {
   return Math.sqrt(dss.distance); 
 }
 
+
+/* from: https://github.com/substack/point-in-polygon/blob/master/index.js */
+function pointInPoly (point, poly, polyLength) {
+  // ray-casting algorithm based on
+  // http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
+  // This is designed to use polygons where first vertex does not repeat at the end of the polygon which is what you get with a 
+  // closed polygon from THREE.js vertices array.
+  // So we pass a shorter polygon length in.
+  var inside = false;
+  var i = 0;
+  var j = polyLength - 1;
+  while (i < polyLength) {
+    var xi = poly[i].x;
+    var yi = poly[i].y;
+    var xj = poly[j].x;
+    var yj = poly[j].y;
+    
+    var intersect = ((yi > point.y) != (yj > point.y))
+                 && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+    j = i;
+    i++;
+  }
+  
+  return inside;
+};
 
 function setupHelp() {
   var text2 = document.createElement('div');
@@ -588,10 +614,12 @@ function drawSectionLineJSM() {
     var cutSection = new THREE.Geometry();
     var sectionCoord;
     var endedCurrentLoop;
-    var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+    var coordsRaw;
+    var coords;
 
     while (numWalked < sectionEdgesCount) {
-      coords = currentIKey.split('_');
+      coordsRaw = currentIKey.split('_');
+      coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
       sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
       cutSection.vertices.push(sectionCoord);
       sectionPoints.push({x: coords[0],y:coords[1]});
@@ -620,8 +648,9 @@ function drawSectionLineJSM() {
       }
       /* To close the loop, add back the finalIKey. */
       if (endedCurrentLoop) {
-        coords = startLoopIKey.split('_');
-        sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
+        coordsRaw = startLoopIKey.split('_');
+        coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
+        sectionCoord = new THREE.Vector3(parseFloat(coords[0]), parseFloat(coords[1]), plane.position.z + 0.01);
         cutSection.vertices.push(sectionCoord);
         sectionPoints.push({x: coords[0],y:coords[1]});
 
@@ -629,16 +658,9 @@ function drawSectionLineJSM() {
         var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
         cutSections.add(sectionPoly);
 
-
-        for (var k = 0; k < sectionPoints.length - 1; ++k) {
-          var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
-          if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
-            nearestMin = nearest.distance;
-            highlightCenter.x = nearest.nearestPoint.x;
-            highlightCenter.y = nearest.nearestPoint.y;
-          }          
+        if (pointInPoly(crosshair.position, cutSection.vertices, cutSection.vertices.length)) {
+          console.log('inside section line');
         }
-        //debugger;
 
         cutSection = new THREE.Geometry();
         if (nextIKey) {
@@ -646,8 +668,20 @@ function drawSectionLineJSM() {
         }
       }
 
+
       /* Advance from here on current loop or newly started loop */
       currentIKey = nextIKey;
+    }
+
+    //debugger;
+    var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+    for (var k = 0; k < sectionPoints.length - 1; ++k) {
+      var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
+      if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+        nearestMin = nearest.distance;
+        highlightCenter.x = nearest.nearestPoint.x;
+        highlightCenter.y = nearest.nearestPoint.y;
+      }          
     }
 
     /* Render highlight if near a sections loop */
@@ -723,8 +757,6 @@ function updateCrosshair() {
 
 /* Version that moves by deltas. This doesn't work at all because you cant "pick up the mouse" with a trackpad. */
 function updateCrosshair2() {
-  // Offset crosshair based on mouse move.
-  
   if (!movingCutplane && !rotatingRoom) {
     var offsetX = ((cursor.current.x - cursor.last.x) / window.innerWidth) * 2.0;
     var offsetY = ((cursor.current.y - cursor.last.y) / window.innerHeight) * -2.0;
@@ -805,3 +837,11 @@ camera.position.set( 0,0, 5);
 setupLights();
 
 render();
+
+var check = { x: -1, y:0 };
+var poly = [ {x: -0.225, y:0.225 },
+             {x: -0.225, y:-0.225 },
+             {x: 0.225,  y:-0.225 },
+             {x: 0.225,  y:0.225 }
+];
+console.log('pointInPoly', pointInPoly(check, poly, poly.length));

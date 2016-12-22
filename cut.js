@@ -7,6 +7,8 @@
 //  [X] handle leaving the window more gracefully, if rotating or draggin especially
 //  [X] Fix cursor offset bugs: try new algo where i just move based on mouse movesn
 //  [X] make cursor look more like the old cursor
+//  [ ] Use cutSections to determine what is near the cursor instead of sectionPoints
+//  [ ] Tie cutSections back to model somehow, or use jsm's viewer instead
 //  [ ] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
@@ -34,6 +36,7 @@ var controls;
 var vertices;
 var faces;
 var highlight;
+var highlightMesh;
 var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
@@ -479,6 +482,15 @@ function setupJSModel() {
 
   jsmPrimitiveMesh = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
   parent.add(jsmPrimitiveMesh[0]);
+
+  var highlightMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+  highlightMesh = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
+  var outlineMaterial2 = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+  highlightMesh[0].material = outlineMaterial2;
+  highlightMesh[0].position = jsmPrimitive.position;
+  highlightMesh[0].scale.multiplyScalar(1.03);
+  highlightMesh[0].position.x = 100000;
+  parent.add( highlightMesh[0] );
 }
 
 function setupHighlight() {
@@ -807,35 +819,23 @@ function updateCursorTracking() {
 }
 
 function updateObjectHighlights() {
-  var highlightObject = 0;
+  var highlightObject = false;
   if (cutSections.children.length > 0) {
     var cutSection;
     for (var i = 0; i < cutSections.children.length; ++i) {
       cutSection = cutSections.children[i];
       if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
         console.log('inside section line');
-        highlightObject = 1;
+        highlightObject = true;
       }
     }
   }
 
-  var materialSet = new JSM.MaterialSet ();
-  materialSet.AddMaterial (new JSM.Material ({
-    ambient : 0xffffff,
-    diffuse : 0x3333ff
-  }));
-  materialSet.AddMaterial (new JSM.Material ({
-    ambient : 0xffffff,
-    diffuse : 0xffffff
-  }));
-
-  for (var j = 0; j < jsmPrimitive.polygons.length; ++j) {
-    jsmPrimitive.GetPolygon(j).SetMaterialIndex(highlightObject);
+  if (highlightObject) {
+    highlightMesh[0].position.x = 0;
+  } else {
+    highlightMesh[0].position.x = 10000;
   }
-  
-  //parent.remove(jsmPrimitiveMesh[0]);
-  //jsmPrimitiveMesh = JSM.ConvertBodyToThreeMeshes (jsmPrimitive, materialSet);
-  //  parent.add(jsmPrimitiveMesh[0]);
 
 }
 

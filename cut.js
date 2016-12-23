@@ -587,6 +587,11 @@ function drawSectionLineJSM() {
   var sectionEdges = {};
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
+
+  if (!movingCutplane) {
+    return; // don't update the sections if not moving the cutplane
+  }
+
   for (var i = 0; i < jsmPrimitive.polygons.length; ++i) {
     face = jsmPrimitive.polygons[i].vertices;
     faceLen = face.length;
@@ -688,20 +693,31 @@ function drawSectionLineJSM() {
         }
       }
 
-
       /* Advance from here on current loop or newly started loop */
       currentIKey = nextIKey;
     }
 
-    //debugger;
-    var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
-    for (var k = 0; k < sectionPoints.length - 1; ++k) {
-      var nearest = distToSegmentSquared(crosshair.position,sectionPoints[k], sectionPoints[k+1]);
-      if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
-        nearestMin = nearest.distance;
-        highlightCenter.x = nearest.nearestPoint.x;
-        highlightCenter.y = nearest.nearestPoint.y;
-      }          
+  }
+}
+
+// --------------------------------------------------------------------------------
+// Update functions
+// --------------------------------------------------------------------------------
+
+function updateCursorHighlight() {
+  //debugger;
+  var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+  if (cutSections && cutSections.children) {
+    for (var i = 0; i < cutSections.children.length; ++i) {
+      var cutSection = cutSections.children[i];
+      for (var k = 0; k < cutSection.geometry.vertices.length - 1; ++k) {
+        var nearest = distToSegmentSquared(crosshair.position,cutSection.geometry.vertices[k], cutSection.geometry.vertices[k+1]);
+        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+          nearestMin = nearest.distance;
+          highlightCenter.x = nearest.nearestPoint.x;
+          highlightCenter.y = nearest.nearestPoint.y;
+        }          
+      }
     }
 
     /* Render highlight if near a sections loop */
@@ -710,10 +726,6 @@ function drawSectionLineJSM() {
     highlight.position.z = plane.position.z + 0.01;
   }
 }
-
-// --------------------------------------------------------------------------------
-// Update functions
-// --------------------------------------------------------------------------------
 
 
 function updateRoomView() {
@@ -820,7 +832,7 @@ function updateCursorTracking() {
 
 function updateObjectHighlights() {
   var highlightObject = false;
-  if (cutSections.children.length > 0) {
+  if (cutSections && cutSections.children && cutSections.children.length > 0) {
     var cutSection;
     for (var i = 0; i < cutSections.children.length; ++i) {
       cutSection = cutSections.children[i];
@@ -855,6 +867,7 @@ function render() {
   updateCutplane();
   updateCursorTracking();
   drawSectionLineJSM();
+  updateCursorHighlight();
   updateObjectHighlights();
 }
 
@@ -881,8 +894,6 @@ setupCutplane();
 setupRoom();
 setupCrosshair();
 setupHighlight();
-//setupPrimitive();
-//setupLineSegment();
 
 camera.position.set( 0,0, 5);
 //controls.update();

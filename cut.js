@@ -7,7 +7,7 @@
 //  [X] handle leaving the window more gracefully, if rotating or draggin especially
 //  [X] Fix cursor offset bugs: try new algo where i just move based on mouse movesn
 //  [X] make cursor look more like the old cursor
-//  [ ] Use cutSections to determine what is near the cursor instead of sectionPoints
+//  [X] Use cutSections to determine what is near the cursor instead of sectionPoints
 //  [ ] Tie cutSections back to model somehow, or use jsm's viewer instead
 //  [ ] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
@@ -15,8 +15,8 @@
 //      https://en.wikipedia.org/wiki/Vector_projection
 //      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
 //  
-//  [ ] restore the rotate tool
-//  [ ] restore booleans
+//  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
+//  [ ] restore booleans cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
 //  [ ] restore snapping of faces to other faces
 //  [ ] restore the tool chests
 //  [ ] investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
@@ -32,6 +32,7 @@ var crosshair;
 var primitive;
 var jsmPrimitive;
 var jsmPrimitiveMesh;
+var csgPrimitiveMesh;
 var controls;
 var vertices;
 var faces;
@@ -48,6 +49,7 @@ var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
 var objectSelectable = false;
+var firstRender = true;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -230,6 +232,24 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 // Setup functions
 // --------------------------------------------------------------------------------
 
+function setupTest() {
+  // Hack testing/ demo part
+  
+  //var cubeCsg = CSG.fromCSG(csgOutput);
+  //parent.add(cubeCsg);
+
+/*
+     var lineGeometry = new THREE.Geometry();
+     var vertArray = lineGeometry.vertices;
+     vertArray.push( new THREE.Vector3(-100, -100, 0), new THREE.Vector3(100, 100, 0) );
+     lineGeometry.computeLineDistances();
+     var lineMaterial = new THREE.LineDashedMaterial( { color: 0x00cc00, dashSize: .03, gapSize: .03, linewidth: 1 } );
+     var line = new THREE.Line( lineGeometry, lineMaterial );
+     scene.add(line);
+   */
+}
+
+
 function setupHelp() {
   var text2 = document.createElement('div');
   text2.style.position = 'absolute';
@@ -289,7 +309,8 @@ function setupCutplane() {
   planeBorder.position.z = plane.position.z;
   plane.add(planeBorder);
 
-  plane.position.z = -0.22;
+  //plane.position.z = -0.22;
+  plane.position.z = 0;
   parent.add(plane);
 }
 
@@ -426,19 +447,6 @@ function setupPrimitive() {
     poly = new THREE.Line(side, lineMaterial);
     parent.add(poly);
 
-
-// Hack testing/ demo part
-
-/*
-    var lineGeometry = new THREE.Geometry();
-    var vertArray = lineGeometry.vertices;
-    vertArray.push( new THREE.Vector3(-100, -100, 0), new THREE.Vector3(100, 100, 0) );
-    lineGeometry.computeLineDistances();
-    var lineMaterial = new THREE.LineDashedMaterial( { color: 0x00cc00, dashSize: .03, gapSize: .03, linewidth: 1 } );
-    var line = new THREE.Line( lineGeometry, lineMaterial );
-    scene.add(line);
-*/
-
     var cubeSize = 0.15;
     var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
     var material = new THREE.MeshPhongMaterial( { 
@@ -493,6 +501,44 @@ function setupJSModel() {
   parent.add( highlightMesh[0] );
 }
 
+// working example: http://jsfiddle.net/L0rdzbej/151/
+function setupCSGModel() {
+  var height = 1;
+  var width = 1;
+  var length = 1;
+
+  var box = new THREE.Mesh( new THREE.BoxGeometry( width, height, length ) );
+
+  // CSG GEOMETRY
+  cube_bsp = new ThreeBSP( box );
+
+  //var cutgeo = new THREE.SphereGeometry( 0.65,32,32 );
+  var cutgeo = new THREE.CubeGeometry( width / 2, height / 2, length / 2);
+
+  // move geometry to where the cut should be
+  var matrix = new THREE.Matrix4();
+  matrix.setPosition( new THREE.Vector3(0.25, 0.25, 0.25) );
+  cutgeo.applyMatrix( matrix );
+
+  var sub =  new THREE.Mesh( cutgeo );
+  var substract_bsp  = new ThreeBSP( sub );
+  var subtract_bsp  = cube_bsp.subtract( substract_bsp );
+
+  csgPrimitiveMesh = subtract_bsp.toMesh(); 
+  csgPrimitiveMesh.geometry.computeVertexNormals();
+
+  var csgPrimitiveMaterial = new THREE.MeshPhongMaterial ( {
+    color:0xff00FF, 
+    shading: THREE.FlatShading,
+    side: THREE.DoubleSide
+  } );
+
+  csgPrimitiveMesh.material = csgPrimitiveMaterial;
+
+  parent.add( csgPrimitiveMesh );
+
+}
+
 function setupHighlight() {
   var radius = 0.04;
   var geometry = new THREE.CircleGeometry(radius,20);
@@ -525,11 +571,12 @@ function setupLineSegment() {
 
 
 // http://geomalgorithms.com/a05-_intersect-1.html
-function drawSectionLine() {
+/* This routine tries to create a simple section line on convex objects defined in setupPrimitive() above */
+function drawSectionLineRawModel() {
   var P0, P1;
   var cutSection = new THREE.Geometry();
   var sectionExists = false;
-  var faceLen;
+  var face, faceLen;
   var sectionPoints = [];
   for (var i = 0; i < faces.length; ++i) {
     face = faces[i];
@@ -579,16 +626,17 @@ function drawSectionLine() {
   }
 }
 
+/* This section line routine works on JSModeler objects */
 function drawSectionLineJSM() {
   var P0, P1;
   var sectionExists = false;
-  var faceLen;
+  var face, faceLen;
   var vertices = jsmPrimitive.vertices;
   var sectionEdges = {};
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
-  if (!movingCutplane) {
+  if (!(movingCutplane || firstRender) ) {
     return; // don't update the sections if not moving the cutplane
   }
 
@@ -699,6 +747,133 @@ function drawSectionLineJSM() {
 
   }
 }
+
+/* This section line routine works on THREE Mesh objects, but otherwise is the same as the JSModeler version (drawSectionLineJSM) above */
+function drawSectionLineThreeMesh() {
+  var P0, P1;
+  var sectionExists = false;
+  var face, faceLen;
+  var vertices = csgPrimitiveMesh.geometry.vertices;
+  var sectionEdges = {};
+  var sectionEdgesCount = 0;
+  var iKey1, iKey2, finalIKey, intersection, intersections;
+
+  if (!(movingCutplane || firstRender) ) {
+    return; // don't update the sections if not moving the cutplane
+  }
+
+  for (var i = 0; i < csgPrimitiveMesh.geometry.faces.length; ++i) {
+    face = [];
+    face.push(csgPrimitiveMesh.geometry.faces[i].a);
+    face.push(csgPrimitiveMesh.geometry.faces[i].b);
+    face.push(csgPrimitiveMesh.geometry.faces[i].c);
+    faceLen = face.length;
+    intersections = [];
+    /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
+    for (var j = 0; j < faceLen; ++j) {
+      //console.log('i:',i,'j:',j);
+      P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
+      P1 = new THREE.Vector3(vertices[face[(j + 1) % faceLen]].x,vertices[face[(j + 1) % faceLen]].y,vertices[face[(j + 1) % faceLen]].z);
+      intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+      if (intersection.intersected) {
+        intersections.push(intersection);
+        //console.log('found intersection: ', intersection.intersectPoint);
+      }
+      if (intersections.length == 2) {
+        sectionExists = true;
+        iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
+        iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
+        finalIKey = iKey2;
+        if (!sectionEdges.hasOwnProperty(iKey1)) {
+          sectionEdges[iKey1] = [];
+        }
+        sectionEdges[iKey1].push(iKey2);
+        if (!sectionEdges.hasOwnProperty(iKey2)) {
+          sectionEdges[iKey2] = [];
+        }
+        sectionEdges[iKey2].push(iKey1);
+        intersections = [];
+        sectionEdgesCount++;
+      }
+    }
+  }
+
+  /* Delete all previous cutSection polygons */
+  if (cutSections) {
+    parent.remove(cutSections);
+  }
+  cutSections = new THREE.Object3D();
+  parent.add(cutSections);
+
+  if (sectionExists) {
+
+    /* Now start at final iKey on the sectionEdges array, and walk it to build up section lines */
+    var sectionPoints = [];
+    var walked = { };
+    var numWalked = 0;
+    var currentIKey = finalIKey, nextIKey;
+    var startLoopIKey = finalIKey;
+    var cutSection = new THREE.Geometry();
+    var sectionCoord;
+    var endedCurrentLoop;
+    var coordsRaw;
+    var coords;
+
+    while (numWalked < sectionEdgesCount) {
+      coordsRaw = currentIKey.split('_');
+      coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
+      sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
+      cutSection.vertices.push(sectionCoord);
+      sectionPoints.push({x: coords[0],y:coords[1]});
+      numWalked++;
+      walked[currentIKey] = true;
+      
+      nextIKey = undefined;
+      if (sectionEdges[currentIKey][0] && (!walked.hasOwnProperty(sectionEdges[currentIKey][0]))) {
+        nextIKey = sectionEdges[currentIKey][0];
+      } else if (sectionEdges[currentIKey][1] && (!walked.hasOwnProperty(sectionEdges[currentIKey][1]))) {
+        nextIKey = sectionEdges[currentIKey][1];
+      }
+      /* If we got through one loop, we will not be able to advance. Scan through the section edges to find an unwalked starting point. */
+      endedCurrentLoop = false;
+      if (nextIKey == undefined) {
+        endedCurrentLoop = true;
+        /* Find a candidate to start a new loop, if we can. */
+        for (var seKey in sectionEdges) {
+          if (sectionEdges.hasOwnProperty(seKey)) {
+            if (!walked.hasOwnProperty(seKey)) {
+              nextIKey = seKey;
+              break;
+            }
+          }
+        }
+      }
+      /* To close the loop, add back the finalIKey. */
+      if (endedCurrentLoop) {
+        //debugger;
+        coordsRaw = startLoopIKey.split('_');
+        coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
+        sectionCoord = new THREE.Vector3(parseFloat(coords[0]), parseFloat(coords[1]), plane.position.z + 0.01);
+        cutSection.vertices.push(sectionCoord);
+        sectionPoints.push({x: coords[0],y:coords[1]});
+
+        cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
+        var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
+        cutSections.add(sectionPoly);
+
+        cutSection = new THREE.Geometry();
+        if (nextIKey) {
+          startLoopIKey = nextIKey;
+        }
+      }
+
+      /* Advance from here on current loop or newly started loop */
+      currentIKey = nextIKey;
+    }
+
+  }
+}
+
 
 // --------------------------------------------------------------------------------
 // Update functions
@@ -866,9 +1041,13 @@ function render() {
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
-  drawSectionLineJSM();
+  drawSectionLineThreeMesh();
+  //drawSectionLineJSM();
   updateCursorHighlight();
-  updateObjectHighlights();
+  //updateObjectHighlights();
+
+  firstRender = false;
+
 }
 
 var scene = new THREE.Scene();
@@ -888,7 +1067,9 @@ parent = new THREE.Object3D();
 scene.add( parent );
 
 
-setupJSModel();
+
+//setupJSModel();
+setupCSGModel();
 setupHelp();
 setupCutplane();
 setupRoom();

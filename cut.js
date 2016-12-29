@@ -54,6 +54,8 @@ var firstRender = true;
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
+var FACE_IN_PLANE_TOLERANCE = 0.0001;
+var POINT_ON_POINT_TOLERANCE = 0.001;
 
 var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
@@ -148,6 +150,7 @@ window.addEventListener('keyup', handleKeyUp, false);
 
 function sqr(x) { return x * x }
 function dist2(v, w) { return sqr(v.x - w.x) + sqr(v.y - w.y) }
+function dist3(v, w) { return sqr(v.x - w.x) + sqr(v.y - w.y) + sqr(v.z - w.z) }
 function distToSegmentSquared(p, v, w) {
   var l2 = dist2(v, w);
   if (l2 == 0) { 
@@ -220,12 +223,21 @@ function intersectLineWithPlane(P0, P1, planeZ) {
     intersectPoint.copy(P0);
     var offset = u.multiplyScalar(s1);
     intersectPoint.add(offset);
+    if (s1 < FACE_IN_PLANE_TOLERANCE) {
+      console.log('point 0', P0.x, P0.y, P0.z, ' on plane with P1=', P1.x, P1.y, P1.z);
+    } else if  (1.0 - s1 < FACE_IN_PLANE_TOLERANCE) {
+      console.log('point 1', P1.x, P1.y, P1.z, ' on plane with P0=', P0.x, P0.y, P0.z);
+    }
     return({intersected: true,
             intersectPoint: intersectPoint
     });
   } else {
     return({intersected: false});
   }
+}
+
+function pointsAreEqual(P0, P1) {
+  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE);
 }
 
 // --------------------------------------------------------------------------------
@@ -310,7 +322,7 @@ function setupCutplane() {
   plane.add(planeBorder);
 
   //plane.position.z = -0.22;
-  plane.position.z = 0;
+  plane.position.z = -0.47;
   parent.add(plane);
 }
 
@@ -524,13 +536,20 @@ function setupCSGModel() {
   var substract_bsp  = new ThreeBSP( sub );
   var subtract_bsp  = cube_bsp.subtract( substract_bsp );
 
-  csgPrimitiveMesh = subtract_bsp.toMesh(); 
+  csgPrimitiveMesh = cube_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
+/*
   var csgPrimitiveMaterial = new THREE.MeshPhongMaterial ( {
     color:0xff00FF, 
     shading: THREE.FlatShading,
     side: THREE.DoubleSide
+  } );
+*/
+  // http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
+  var csgPrimitiveMaterial = new THREE.MeshBasicMaterial ( {
+    color:0xffffff,
+    wireframe: true
   } );
 
   csgPrimitiveMesh.material = csgPrimitiveMaterial;
@@ -748,6 +767,13 @@ function drawSectionLineJSM() {
   }
 }
 
+function faceInCutplane(face) {
+  return ( (Math.abs(face[0].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
+           (Math.abs(face[1].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
+           (Math.abs(face[2].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE)
+  );
+}
+
 /* This section line routine works on THREE Mesh objects, but otherwise is the same as the JSModeler version (drawSectionLineJSM) above */
 function drawSectionLineThreeMesh() {
   var P0, P1;
@@ -758,42 +784,50 @@ function drawSectionLineThreeMesh() {
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
-  if (!(movingCutplane || firstRender) ) {
-    return; // don't update the sections if not moving the cutplane
-  }
+//  if (!(movingCutplane || firstRender) ) {
+//    return; // don't update the sections if not moving the cutplane
+//  }
 
   for (var i = 0; i < csgPrimitiveMesh.geometry.faces.length; ++i) {
     face = [];
     face.push(csgPrimitiveMesh.geometry.faces[i].a);
     face.push(csgPrimitiveMesh.geometry.faces[i].b);
     face.push(csgPrimitiveMesh.geometry.faces[i].c);
-    faceLen = face.length;
-    intersections = [];
-    /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
-    for (var j = 0; j < faceLen; ++j) {
-      //console.log('i:',i,'j:',j);
-      P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
-      P1 = new THREE.Vector3(vertices[face[(j + 1) % faceLen]].x,vertices[face[(j + 1) % faceLen]].y,vertices[face[(j + 1) % faceLen]].z);
-      intersection = intersectLineWithPlane(P0, P1, plane.position.z);
-      if (intersection.intersected) {
-        intersections.push(intersection);
-        //console.log('found intersection: ', intersection.intersectPoint);
-      }
-      if (intersections.length == 2) {
-        sectionExists = true;
-        iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
-        iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
-        finalIKey = iKey2;
-        if (!sectionEdges.hasOwnProperty(iKey1)) {
-          sectionEdges[iKey1] = [];
+    if (!faceInCutplane(face)) {
+      faceLen = 3;
+      intersections = [];
+      /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
+      for (var j = 0; j < faceLen; ++j) {
+        //console.log('i:',i,'j:',j);
+        P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
+        P1 = new THREE.Vector3(vertices[face[(j + 1) % faceLen]].x,vertices[face[(j + 1) % faceLen]].y,vertices[face[(j + 1) % faceLen]].z);
+        intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+        if (intersection.intersected) {
+          intersections.push(intersection);
+          //console.log('found intersection: ', intersection.intersectPoint);
         }
-        sectionEdges[iKey1].push(iKey2);
-        if (!sectionEdges.hasOwnProperty(iKey2)) {
-          sectionEdges[iKey2] = [];
+        if (intersections.length == 2) {
+          if (pointsAreEqual(intersections[0].intersectPoint, intersections[1].intersectPoint)) {
+            /* If the two points are equal, which happens when a triangle has a single point on the plane,
+               drop one and keep searching. */
+            intersections.pop();
+          } else {
+            sectionExists = true;
+            iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
+            iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
+            finalIKey = iKey2;
+            if (!sectionEdges.hasOwnProperty(iKey1)) {
+              sectionEdges[iKey1] = {};
+            }
+            sectionEdges[iKey1][iKey2] = true;
+            if (!sectionEdges.hasOwnProperty(iKey2)) {
+              sectionEdges[iKey2] = {};
+            }
+            sectionEdges[iKey2][iKey1] = true;
+            intersections = [];
+            sectionEdgesCount++;
+          }
         }
-        sectionEdges[iKey2].push(iKey1);
-        intersections = [];
-        sectionEdgesCount++;
       }
     }
   }
@@ -819,7 +853,7 @@ function drawSectionLineThreeMesh() {
     var coordsRaw;
     var coords;
 
-    while (numWalked < sectionEdgesCount) {
+    while (numWalked < sectionEdgesCount && currentIKey) {
       coordsRaw = currentIKey.split('_');
       coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
       sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
@@ -829,10 +863,11 @@ function drawSectionLineThreeMesh() {
       walked[currentIKey] = true;
       
       nextIKey = undefined;
-      if (sectionEdges[currentIKey][0] && (!walked.hasOwnProperty(sectionEdges[currentIKey][0]))) {
-        nextIKey = sectionEdges[currentIKey][0];
-      } else if (sectionEdges[currentIKey][1] && (!walked.hasOwnProperty(sectionEdges[currentIKey][1]))) {
-        nextIKey = sectionEdges[currentIKey][1];
+      for (var seChild in sectionEdges[currentIKey]) {
+        if (!walked.hasOwnProperty(seChild)) {
+          nextIKey = seChild;
+          break;
+        }
       }
       /* If we got through one loop, we will not be able to advance. Scan through the section edges to find an unwalked starting point. */
       endedCurrentLoop = false;
@@ -848,9 +883,9 @@ function drawSectionLineThreeMesh() {
           }
         }
       }
+
       /* To close the loop, add back the finalIKey. */
       if (endedCurrentLoop) {
-        //debugger;
         coordsRaw = startLoopIKey.split('_');
         coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
         sectionCoord = new THREE.Vector3(parseFloat(coords[0]), parseFloat(coords[1]), plane.position.z + 0.01);
@@ -871,6 +906,7 @@ function drawSectionLineThreeMesh() {
       currentIKey = nextIKey;
     }
 
+    //debugger;
   }
 }
 
@@ -955,6 +991,7 @@ function updateCrosshair() {
              'cursorY:', cursor.current.y,
              'X:',       crosshair.position.x, 
              'Y:',       crosshair.position.y,
+             'Z:',       plane.position.z,
              'rotX:',    roomRotateX,
              'rotY:',    roomRotateY,
              'cursorAdjust.X:', cursorAdjust.x,

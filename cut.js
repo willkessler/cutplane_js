@@ -55,7 +55,7 @@ var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
-var POINT_ON_POINT_TOLERANCE = 0.001;
+var POINT_ON_POINT_TOLERANCE = 0.005;
 
 var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
@@ -228,16 +228,18 @@ function intersectLineWithPlane(P0, P1, planeZ) {
     } else if  (1.0 - s1 < FACE_IN_PLANE_TOLERANCE) {
       console.log('point 1', P1.x, P1.y, P1.z, ' on plane with P0=', P0.x, P0.y, P0.z);
     }
+    //console.log('Intersection found at', intersectPoint, ' between P0:', P0.x, P0.y, P0.z, ' and P1:', P1.x, P1.y, P1.z);
     return({intersected: true,
             intersectPoint: intersectPoint
     });
   } else {
+    //console.log('No intersection found, P0:', P0.x, P0.y, P0.z, ' and P1:', P1.x, P1.y, P1.z);
     return({intersected: false});
   }
 }
 
 function pointsAreEqual(P0, P1) {
-  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE);
+  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
 }
 
 // --------------------------------------------------------------------------------
@@ -322,7 +324,7 @@ function setupCutplane() {
   plane.add(planeBorder);
 
   //plane.position.z = -0.22;
-  plane.position.z = -0.47;
+  plane.position.z = -0.490000007;
   parent.add(plane);
 }
 
@@ -536,7 +538,7 @@ function setupCSGModel() {
   var substract_bsp  = new ThreeBSP( sub );
   var subtract_bsp  = cube_bsp.subtract( substract_bsp );
 
-  csgPrimitiveMesh = cube_bsp.toMesh(); 
+  csgPrimitiveMesh = subtract_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
 /*
@@ -767,10 +769,10 @@ function drawSectionLineJSM() {
   }
 }
 
-function faceInCutplane(face) {
-  return ( (Math.abs(face[0].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
-           (Math.abs(face[1].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
-           (Math.abs(face[2].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE)
+function faceInCutplane(face, vertices) {
+  return ( (Math.abs(vertices[face[0]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
+           (Math.abs(vertices[face[1]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
+           (Math.abs(vertices[face[2]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE)
   );
 }
 
@@ -788,12 +790,13 @@ function drawSectionLineThreeMesh() {
 //    return; // don't update the sections if not moving the cutplane
 //  }
 
+  var intersectionsLog = {};
+  var facesChecked = 0;
   for (var i = 0; i < csgPrimitiveMesh.geometry.faces.length; ++i) {
-    face = [];
-    face.push(csgPrimitiveMesh.geometry.faces[i].a);
-    face.push(csgPrimitiveMesh.geometry.faces[i].b);
-    face.push(csgPrimitiveMesh.geometry.faces[i].c);
-    if (!faceInCutplane(face)) {
+    face = [ csgPrimitiveMesh.geometry.faces[i].a, csgPrimitiveMesh.geometry.faces[i].b, csgPrimitiveMesh.geometry.faces[i].c ];
+    if (!faceInCutplane(face, csgPrimitiveMesh.geometry.vertices)) {
+      //console.log('Examining face:', face);
+      facesChecked++;
       faceLen = 3;
       intersections = [];
       /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
@@ -804,6 +807,7 @@ function drawSectionLineThreeMesh() {
         intersection = intersectLineWithPlane(P0, P1, plane.position.z);
         if (intersection.intersected) {
           intersections.push(intersection);
+          intersectionsLog[intersection.intersectPoint.x.toFixed(8) + '_' + intersection.intersectPoint.y.toFixed(8)] = true;
           //console.log('found intersection: ', intersection.intersectPoint);
         }
         if (intersections.length == 2) {
@@ -829,9 +833,12 @@ function drawSectionLineThreeMesh() {
           }
         }
       }
+    } else {
+      // console.log('Skipping face:', face);
     }
   }
 
+  //debugger;
   /* Delete all previous cutSection polygons */
   if (cutSections) {
     parent.remove(cutSections);

@@ -224,9 +224,9 @@ function intersectLineWithPlane(P0, P1, planeZ) {
     var offset = u.multiplyScalar(s1);
     intersectPoint.add(offset);
     if (s1 < FACE_IN_PLANE_TOLERANCE) {
-      console.log('point 0', P0.x, P0.y, P0.z, ' on plane with P1=', P1.x, P1.y, P1.z);
+      //console.log('point 0', P0.x, P0.y, P0.z, ' on plane with P1=', P1.x, P1.y, P1.z);
     } else if  (1.0 - s1 < FACE_IN_PLANE_TOLERANCE) {
-      console.log('point 1', P1.x, P1.y, P1.z, ' on plane with P0=', P0.x, P0.y, P0.z);
+      //console.log('point 1', P1.x, P1.y, P1.z, ' on plane with P0=', P0.x, P0.y, P0.z);
     }
     //console.log('Intersection found at', intersectPoint, ' between P0:', P0.x, P0.y, P0.z, ' and P1:', P1.x, P1.y, P1.z);
     return({intersected: true,
@@ -541,18 +541,19 @@ function setupCSGModel() {
   csgPrimitiveMesh = subtract_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
-/*
   var csgPrimitiveMaterial = new THREE.MeshPhongMaterial ( {
     color:0xff00FF, 
     shading: THREE.FlatShading,
     side: THREE.DoubleSide
   } );
-*/
+
+/*
   // http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
   var csgPrimitiveMaterial = new THREE.MeshBasicMaterial ( {
     color:0xffffff,
     wireframe: true
   } );
+*/
 
   csgPrimitiveMesh.material = csgPrimitiveMaterial;
 
@@ -797,6 +798,9 @@ function drawSectionLineThreeMesh() {
     if (!faceInCutplane(face, csgPrimitiveMesh.geometry.vertices)) {
       //console.log('Examining face:', face);
       facesChecked++;
+      if (facesChecked == 9) {
+        //debugger;
+      }
       faceLen = 3;
       intersections = [];
       /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
@@ -811,26 +815,20 @@ function drawSectionLineThreeMesh() {
           //console.log('found intersection: ', intersection.intersectPoint);
         }
         if (intersections.length == 2) {
-          if (pointsAreEqual(intersections[0].intersectPoint, intersections[1].intersectPoint)) {
-            /* If the two points are equal, which happens when a triangle has a single point on the plane,
-               drop one and keep searching. */
-            intersections.pop();
-          } else {
-            sectionExists = true;
-            iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
-            iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
-            finalIKey = iKey2;
-            if (!sectionEdges.hasOwnProperty(iKey1)) {
-              sectionEdges[iKey1] = {};
-            }
-            sectionEdges[iKey1][iKey2] = true;
-            if (!sectionEdges.hasOwnProperty(iKey2)) {
-              sectionEdges[iKey2] = {};
-            }
-            sectionEdges[iKey2][iKey1] = true;
-            intersections = [];
-            sectionEdgesCount++;
+          sectionExists = true;
+          iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
+          iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
+          finalIKey = iKey2;
+          if (!sectionEdges.hasOwnProperty(iKey1)) {
+            sectionEdges[iKey1] = {};
           }
+          sectionEdges[iKey1][iKey2] = true;
+          if (!sectionEdges.hasOwnProperty(iKey2)) {
+            sectionEdges[iKey2] = {};
+          }
+          sectionEdges[iKey2][iKey1] = true;
+          intersections = [];
+          sectionEdgesCount++;
         }
       }
     } else {

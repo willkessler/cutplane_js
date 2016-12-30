@@ -538,7 +538,14 @@ function setupCSGModel() {
   var substract_bsp  = new ThreeBSP( sub );
   var subtract_bsp  = cube_bsp.subtract( substract_bsp );
 
-  csgPrimitiveMesh = subtract_bsp.toMesh(); 
+  matrix.setPosition( new THREE.Vector3(-0.25, -0.15, -0.15) );
+  cutgeo.applyMatrix( matrix );
+
+  sub =  new THREE.Mesh( cutgeo );
+  substract_bsp  = new ThreeBSP( sub );
+  var subtract_bsp2  = subtract_bsp.subtract( substract_bsp );
+  
+  csgPrimitiveMesh = subtract_bsp2.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
   var csgPrimitiveMaterial = new THREE.MeshPhongMaterial ( {

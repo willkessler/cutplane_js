@@ -42,6 +42,7 @@ var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
 var wasRotatingRoom = false;
+var useWireFrame = false, previousUseWireFrame = false;
 var cursorAdjust =  { x: 0, y: 0 };
 var cursorPreMove = { x: 0, y: 0 };
 var rotatingRoom = true;
@@ -56,6 +57,7 @@ var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.005;
+var TO_FIXED_DECIMAL_PLACES = 4;
 
 var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
@@ -109,6 +111,9 @@ function handleKeyDown(event) {
       window.optionKeyPressed = true;
       break;
     case 17:
+    case 87:
+      window.wKeyPressed = true;
+      break;
     case 91:
     case 93:
     case 224:
@@ -127,6 +132,9 @@ function handleKeyUp(event) {
       window.optionKeyPressed = false;
       break;
     case 17:
+    case 87:
+      window.wKeyPressed = false;
+      break;
     case 91:
     case 93:
     case 224:
@@ -324,7 +332,7 @@ function setupCutplane() {
   plane.add(planeBorder);
 
   //plane.position.z = -0.22;
-  plane.position.z = -0.490000007;
+  plane.position.z = 0.33;
   parent.add(plane);
 }
 
@@ -526,8 +534,8 @@ function setupCSGModel() {
   // CSG GEOMETRY
   cube_bsp = new ThreeBSP( box );
 
-  //var cutgeo = new THREE.SphereGeometry( 0.65,32,32 );
-  var cutgeo = new THREE.CubeGeometry( width / 2, height / 2, length / 2);
+  var cutgeo = new THREE.SphereGeometry( 0.5,32,32 );
+  //var cutgeo = new THREE.CubeGeometry( width / 2, height / 2, length / 2);
 
   // move geometry to where the cut should be
   var matrix = new THREE.Matrix4();
@@ -538,31 +546,31 @@ function setupCSGModel() {
   var substract_bsp  = new ThreeBSP( sub );
   var subtract_bsp  = cube_bsp.subtract( substract_bsp );
 
+/*
   matrix.setPosition( new THREE.Vector3(-0.25, -0.15, -0.15) );
   cutgeo.applyMatrix( matrix );
 
   sub =  new THREE.Mesh( cutgeo );
   substract_bsp  = new ThreeBSP( sub );
   var subtract_bsp2  = subtract_bsp.subtract( substract_bsp );
+*/
   
-  csgPrimitiveMesh = subtract_bsp2.toMesh(); 
+  csgPrimitiveMesh = subtract_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
-  var csgPrimitiveMaterial = new THREE.MeshPhongMaterial ( {
+  window.csgPrimitiveMaterialFlat = new THREE.MeshPhongMaterial ( {
     color:0xff00FF, 
     shading: THREE.FlatShading,
     side: THREE.DoubleSide
   } );
 
-/*
   // http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
-  var csgPrimitiveMaterial = new THREE.MeshBasicMaterial ( {
+  window.csgPrimitiveMaterialWire = new THREE.MeshBasicMaterial ( {
     color:0xffffff,
     wireframe: true
   } );
-*/
 
-  csgPrimitiveMesh.material = csgPrimitiveMaterial;
+  csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
 
   parent.add( csgPrimitiveMesh );
 
@@ -685,8 +693,8 @@ function drawSectionLineJSM() {
       }
       if (intersections.length == 2) {
         sectionExists = true;
-        iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
-        iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
+        iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+        iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
         finalIKey = iKey2;
         if (!sectionEdges.hasOwnProperty(iKey1)) {
           sectionEdges[iKey1] = [];
@@ -818,13 +826,13 @@ function drawSectionLineThreeMesh() {
         intersection = intersectLineWithPlane(P0, P1, plane.position.z);
         if (intersection.intersected) {
           intersections.push(intersection);
-          intersectionsLog[intersection.intersectPoint.x.toFixed(8) + '_' + intersection.intersectPoint.y.toFixed(8)] = true;
+          intersectionsLog[intersection.intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersection.intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES)] = true;
           //console.log('found intersection: ', intersection.intersectPoint);
         }
         if (intersections.length == 2) {
           sectionExists = true;
-          iKey1 = intersections[0].intersectPoint.x.toFixed(8) + '_' + intersections[0].intersectPoint.y.toFixed(8);
-          iKey2 = intersections[1].intersectPoint.x.toFixed(8) + '_' + intersections[1].intersectPoint.y.toFixed(8);
+          iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+          iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
           finalIKey = iKey2;
           if (!sectionEdges.hasOwnProperty(iKey1)) {
             sectionEdges[iKey1] = {};
@@ -834,8 +842,15 @@ function drawSectionLineThreeMesh() {
             sectionEdges[iKey2] = {};
           }
           sectionEdges[iKey2][iKey1] = true;
-          intersections = [];
           sectionEdgesCount++;
+          if (iKey1 == '-0.13960847_0.50000000') {
+            console.log('iKey1');
+            debugger;
+          } else if (iKey2 == '-0.13960847_0.50000000') {
+            console.log('iKey2');
+            debugger;
+          }
+          intersections = [];
         }
       }
     } else {
@@ -843,7 +858,6 @@ function drawSectionLineThreeMesh() {
     }
   }
 
-  //debugger;
   /* Delete all previous cutSection polygons */
   if (cutSections) {
     parent.remove(cutSections);
@@ -853,9 +867,19 @@ function drawSectionLineThreeMesh() {
 
   if (sectionExists) {
 
+    for (var seKey in sectionEdges) {
+      var childCt = 0;
+      for (var seChild in sectionEdges[seKey]) {
+        childCt++;
+      }
+      if (childCt < 2) {
+        console.log('Less than two children:', seKey);
+      }
+    }
+
     /* Now start at final iKey on the sectionEdges array, and walk it to build up section lines */
     var sectionPoints = [];
-    var walked = { };
+    var walked = {};
     var numWalked = 0;
     var currentIKey = finalIKey, nextIKey;
     var startLoopIKey = finalIKey;
@@ -896,7 +920,7 @@ function drawSectionLineThreeMesh() {
         }
       }
 
-      /* To close the loop, add back the finalIKey. */
+      /* To close the loop, add back the startIKey. */
       if (endedCurrentLoop) {
         coordsRaw = startLoopIKey.split('_');
         coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
@@ -912,6 +936,17 @@ function drawSectionLineThreeMesh() {
         if (nextIKey) {
           startLoopIKey = nextIKey;
         }
+
+/*
+        console.log('Closing loop.');
+        console.log('walked:');
+        for (var walkedCk in walked) {
+          console.log(walkedCk, sectionEdges[walkedCk]);
+        }
+
+        debugger;
+*/
+
       }
 
       /* Advance from here on current loop or newly started loop */
@@ -1075,6 +1110,22 @@ function updateObjectHighlights() {
 
 }
 
+function checkWireFrameToggle() {
+  if (window.wKeyPressed) {
+    if (useWireFrame == previousUseWireFrame) {
+      useWireFrame = !useWireFrame;
+      if (useWireFrame) {
+        csgPrimitiveMesh.material = window.csgPrimitiveMaterialWire;
+      } else {
+        csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
+      }
+      console.log('useWireFrame:', useWireFrame);
+    }
+  } else {
+    previousUseWireFrame = useWireFrame;
+  }
+}
+
 // --------------------------------------------------------------------------------
 // Main loop begins
 // --------------------------------------------------------------------------------
@@ -1086,6 +1137,7 @@ function render() {
   movingCutplane = window.optionKeyPressed;
   rotatingRoom = window.cmdKeyPressed;
 
+  checkWireFrameToggle();
   updateRoomView();
   updateCrosshair();
   updateCutplane();

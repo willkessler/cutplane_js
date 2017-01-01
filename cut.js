@@ -78,6 +78,14 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 // -------------------------------------------------------------------------------------------------------------
 
 
+document.onmousedown = function(e) {
+  console.log('mouse down');
+}
+
+document.onmouseup = function(e) {
+  console.log('mouse up');
+}
+
 document.onmousemove = function(e){
   cursor.last.x = cursor.current.x; 
   cursor.last.y = cursor.current.y;
@@ -111,6 +119,7 @@ function handleKeyDown(event) {
       window.optionKeyPressed = true;
       break;
     case 17:
+      break; // control key
     case 87:
       window.wKeyPressed = true;
       break;
@@ -132,6 +141,7 @@ function handleKeyUp(event) {
       window.optionKeyPressed = false;
       break;
     case 17:
+      break; // control key
     case 87:
       window.wKeyPressed = false;
       break;
@@ -1096,17 +1106,17 @@ function updateObjectHighlights() {
     for (var i = 0; i < cutSections.children.length; ++i) {
       cutSection = cutSections.children[i];
       if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
-        console.log('inside section line');
+        console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
         highlightObject = true;
       }
     }
   }
 
-  if (highlightObject) {
-    highlightMesh[0].position.x = 0;
-  } else {
-    highlightMesh[0].position.x = 10000;
-  }
+//  if (highlightObject) {
+//    highlightMesh[0].position.x = 0;
+//  } else {
+//    highlightMesh[0].position.x = 10000;
+//  }
 
 }
 
@@ -1145,7 +1155,7 @@ function render() {
   drawSectionLineThreeMesh();
   //drawSectionLineJSM();
   updateCursorHighlight();
-  //updateObjectHighlights();
+  updateObjectHighlights();
 
   firstRender = false;
 

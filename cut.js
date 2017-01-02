@@ -37,7 +37,10 @@ var controls;
 var vertices;
 var faces;
 var highlight;
-var highlightMesh;
+var selectMesh;
+var selectMeshMaterialUnselected;
+var selectMeshMaterialSelected;
+var selectMeshDisplayed = false;
 var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
@@ -51,6 +54,7 @@ var roomRotateY = Math.PI/4;
 var cutSections;
 var objectSelectable = false;
 var firstRender = true;
+var mouseDown = false;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
@@ -80,10 +84,14 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 
 document.onmousedown = function(e) {
   console.log('mouse down');
+  mouseDown = true;
+  selectMesh.material = selectMeshMaterialSelected;
 }
 
 document.onmouseup = function(e) {
   console.log('mouse up');
+  mouseDown = false;
+  selectMesh.material = selectMeshMaterialUnselected;
 }
 
 document.onmousemove = function(e){
@@ -586,6 +594,17 @@ function setupCSGModel() {
 
 }
 
+function setupSelectMesh() {
+  selectMesh = csgPrimitiveMesh.clone();
+  selectMeshMaterialUnselected = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+  selectMeshMaterialSelected = new THREE.MeshBasicMaterial( { color: 0xff0000, side: THREE.BackSide } );
+  selectMesh.material = selectMeshMaterialUnselected;
+  selectMesh.scale.multiplyScalar(1.03);
+  selectMesh.position.x = 100000;
+  parent.add(selectMesh);
+}
+
+
 function setupHighlight() {
   var radius = 0.04;
   var geometry = new THREE.CircleGeometry(radius,20);
@@ -1039,11 +1058,18 @@ function updateCrosshair() {
     wasRotatingRoom = rotatingRoom;
   }
   if (!movingCutplane && !rotatingRoom) {
+    var prevCrossHair = { x: crosshair.position.x, y: crosshair.position.y };
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
+    if (selectMeshDisplayed && mouseDown) {
+      var xDiff = crosshair.position.x - prevCrossHair.x;
+      var yDiff = crosshair.position.y - prevCrossHair.y;
+      csgPrimitiveMesh.geometry.translate(xDiff, yDiff, 0.0);
+      console.log('Translating object by:', xDiff, yDiff);
+    }
   }
 
-  debugText(['Crosshair set', 
+  debugText(['Crosshair set.', 
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
              'X:',       crosshair.position.x, 
@@ -1061,6 +1087,7 @@ function updateCrosshair() {
 
 }
 
+// DEFUNCT
 /* Version that moves by deltas. This doesn't work at all because you cant "pick up the mouse" with a trackpad. */
 function updateCrosshair2() {
   if (!movingCutplane && !rotatingRoom) {
@@ -1089,8 +1116,17 @@ function updateCutplane() {
     }
     //console.log('cursorXdiff is:', cursorXdiff, cursor.current.x,cursor.last.x );
     if( Math.abs(cursorXdiff) > 0 ){
+      var prevPlaneZ = plane.position.z;
       plane.position.z = Math.max(-1, Math.min(plane.position.z + cursorXdiff, 1.0));
+
+      if (selectMeshDisplayed && mouseDown) {
+        var zDiff = plane.position.z - prevPlaneZ;
+        csgPrimitiveMesh.geometry.translate(0,0,zDiff);
+        console.log('Translating object in Z by:', zDiff);
+      }
+
     }
+    
   }
 }
 
@@ -1099,24 +1135,25 @@ function updateCursorTracking() {
   cursor.last.y = cursor.current.y;
 }
 
-function updateObjectHighlights() {
-  var highlightObject = false;
+function updateSelectMesh() {
+  selectMeshDisplayed = false;
   if (cutSections && cutSections.children && cutSections.children.length > 0) {
     var cutSection;
     for (var i = 0; i < cutSections.children.length; ++i) {
       cutSection = cutSections.children[i];
       if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
         console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
-        highlightObject = true;
+        // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
+        selectMeshDisplayed = true;
       }
     }
   }
 
-//  if (highlightObject) {
-//    highlightMesh[0].position.x = 0;
-//  } else {
-//    highlightMesh[0].position.x = 10000;
-//  }
+  if (selectMeshDisplayed) {
+    selectMesh.position.x = 0;
+  } else {
+    selectMesh.position.x = 10000;
+  }
 
 }
 
@@ -1149,13 +1186,13 @@ function render() {
 
   checkWireFrameToggle();
   updateRoomView();
+  updateSelectMesh();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
   drawSectionLineThreeMesh();
   //drawSectionLineJSM();
   updateCursorHighlight();
-  updateObjectHighlights();
 
   firstRender = false;
 
@@ -1181,6 +1218,7 @@ scene.add( parent );
 
 //setupJSModel();
 setupCSGModel();
+setupSelectMesh();
 setupHelp();
 setupCutplane();
 setupRoom();

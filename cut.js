@@ -102,6 +102,12 @@ document.onmousemove = function(e){
   //  debugText(['Cursor ', 'X:', e.pageX, 'Y:', e.pageY,  window.innerWidth, window.innerHeight]);
 }
 
+/* Prevent returning to this tab and thinking these keys are still down */
+window.onblur = function(e) {
+  window.optionKeyPressed = false;
+  window.cmdKeyPressed = false;
+}
+
 function handleMouseOut(e) {
   console.log('leaving window');
   window.cmdKeyPressed = false;

@@ -89,7 +89,6 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 
 
 document.onmousedown = function(e) {
-  console.log('mouse down');
   mouseDown = true;
   if (selectMeshDisplayed != undefined) {
     selectMeshDisplayed.material = selectMeshMaterialSelected;
@@ -97,7 +96,6 @@ document.onmousedown = function(e) {
 }
 
 document.onmouseup = function(e) {
-  console.log('mouse up');
   mouseDown = false;
   if (selectMeshDisplayed != undefined) {
     selectMeshDisplayed.material = selectMeshMaterialUnselected;
@@ -137,7 +135,7 @@ document.body.addEventListener("mouseenter", handleMouseEnter, false);
 
 
 function handleKeyDown(event) {
-  console.log('key pressed:', event.keyCode);
+  //console.log('key pressed:', event.keyCode);
   switch (event.keyCode) {
     case 18:
       window.optionKeyPressed = true;
@@ -1052,11 +1050,11 @@ function updateCursorHighlight() {
 function updateRoomView() {
   if (wasRotatingRoom != rotatingRoom) {
     if (wasRotatingRoom) {
-      console.log('Stopped rotating room, calculating adjustment.');
+      // console.log('Stopped rotating room, calculating adjustment.');
       cursorAdjust.x = cursorAdjust.x + (cursorPreMove.x - cursor.current.x);
       cursorAdjust.y = cursorAdjust.y + (cursorPreMove.y - cursor.current.y);
     } else {
-      console.log('started rotating room, saving cursor position');
+      // console.log('started rotating room, saving cursor position');
       cursorPreMove.x = cursor.current.x;
       cursorPreMove.y = cursor.current.y;
     }
@@ -1080,11 +1078,11 @@ function updateCrosshair() {
   /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
   if ((wasMovingPlane != movingCutplane) || (wasRotatingRoom != rotatingRoom)) {
     if (wasMovingPlane || wasRotatingRoom) {
-      console.log('Stopped moving plane or rotating, calculating adjustment.');
+      // console.log('Stopped moving plane or rotating, calculating adjustment.');
       cursorAdjust.x = cursorAdjust.x + (cursorPreMove.x - cursor.current.x);
       cursorAdjust.y = cursorAdjust.y + (cursorPreMove.y - cursor.current.y);
     } else {
-      console.log('started moving plane or rotating, saving cursor position');
+      // console.log('started moving plane or rotating, saving cursor position');
       cursorPreMove.x = cursor.current.x;
       cursorPreMove.y = cursor.current.y;
     }
@@ -1099,7 +1097,7 @@ function updateCrosshair() {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       selectMeshDisplayed.geometry.translate(xDiff, yDiff, 0.0);
-      console.log('Translating object by:', xDiff, yDiff);
+      // console.log('Translating object by:', xDiff, yDiff);
     }
   }
 
@@ -1186,7 +1184,7 @@ function displaySelectMesh() {
       csgPrimitive = cutSection.csgPrimitive;
       selectMesh = csgPrimitive.selectMesh;
       if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
-        console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
+        // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
         // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
         selectMeshDisplayed = selectMesh;
         csgPrimitiveSelected = csgPrimitive;

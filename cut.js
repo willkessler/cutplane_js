@@ -43,7 +43,10 @@ var faces;
 var highlight;
 var selectMeshMaterialUnselected;
 var selectMeshMaterialSelected;
-var selectMeshDisplayed = false;
+
+var selectMeshDisplayed = undefined;
+var csgPrimitiveSelected = undefined;
+
 var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
@@ -88,13 +91,17 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 document.onmousedown = function(e) {
   console.log('mouse down');
   mouseDown = true;
-  selectMesh.material = selectMeshMaterialSelected;
+  if (selectMeshDisplayed != undefined) {
+    selectMeshDisplayed.material = selectMeshMaterialSelected;
+  }
 }
 
 document.onmouseup = function(e) {
   console.log('mouse up');
   mouseDown = false;
-  selectMesh.material = selectMeshMaterialUnselected;
+  if (selectMeshDisplayed != undefined) {
+    selectMeshDisplayed.material = selectMeshMaterialUnselected;
+  }
 }
 
 document.onmousemove = function(e){
@@ -858,6 +865,13 @@ function drawSectionLineThreeMesh() {
 
   var intersectionsLog = {};
   var facesChecked = 0;
+  /* Delete all previous cutSection polygons */
+  if (cutSections) {
+    parent.remove(cutSections);
+  }
+  cutSections = new THREE.Object3D();
+  parent.add(cutSections);
+
   for (var csgPrimitive of csgPrimitives.children) {
     sectionExists = false;
     var csgGeometry = csgPrimitive.geometry;
@@ -912,13 +926,6 @@ function drawSectionLineThreeMesh() {
         // console.log('Skipping face:', face);
       }
     }
-
-    /* Delete all previous cutSection polygons */
-    if (cutSections) {
-      parent.remove(cutSections);
-    }
-    cutSections = new THREE.Object3D();
-    parent.add(cutSections);
 
     if (sectionExists) {
 
@@ -1088,10 +1095,10 @@ function updateCrosshair() {
     var prevCrossHair = { x: crosshair.position.x, y: crosshair.position.y };
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
-    if (selectMeshDisplayed && mouseDown) {
+    if ((selectMeshDisplayed != undefined) && mouseDown) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
-      csgPrimitiveMesh.geometry.translate(xDiff, yDiff, 0.0);
+      selectMeshDisplayed.geometry.translate(xDiff, yDiff, 0.0);
       console.log('Translating object by:', xDiff, yDiff);
     }
   }
@@ -1146,9 +1153,9 @@ function updateCutplane() {
       var prevPlaneZ = plane.position.z;
       plane.position.z = Math.max(-1, Math.min(plane.position.z + cursorXdiff, 1.0));
 
-      if (selectMeshDisplayed && mouseDown) {
+      if ((selectMeshDisplayed != undefined) && mouseDown) {
         var zDiff = plane.position.z - prevPlaneZ;
-        csgPrimitiveMesh.geometry.translate(0,0,zDiff);
+        csgPrimitiveSelected.geometry.translate(0,0,zDiff);
         console.log('Translating object in Z by:', zDiff);
       }
 
@@ -1164,23 +1171,31 @@ function updateCursorTracking() {
 
 function displaySelectMesh() {
   var selectMesh;
-  selectMeshDisplayed = false;
+  selectMeshDisplayed = undefined;
+  csgPrimitiveSelected = undefined;
+
+  // First clear any previously displayed select meshes
+  for (var csgPrimitive of csgPrimitives.children) {
+      selectMesh = csgPrimitive.selectMesh;
+      selectMesh.position.x = 10000;
+  }
+
   if (cutSections && cutSections.children && cutSections.children.length > 0) {
-    var cutSection;
+    var cutSection, csgPrimitive;
     for (var cutSection of cutSections.children) {
-      selectMesh = cutSection.csgPrimitive.selectMesh;
+      csgPrimitive = cutSection.csgPrimitive;
+      selectMesh = csgPrimitive.selectMesh;
       if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
         console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
         // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
-        selectMeshDisplayed = true;
+        selectMeshDisplayed = selectMesh;
+        csgPrimitiveSelected = csgPrimitive;
         selectMesh.position.x = 0;
         break;
-      } else {
-        selectMesh.position.x = 10000;
       }
     }
   }
-
+      
 }
 
 function checkWireFrameToggle() {

@@ -329,10 +329,10 @@ function debugText(displayArray) {
 }
 
 function setupLights() {
-  var dirLight = new THREE.DirectionalLight(0xffffff, 1);
-  dirLight.position.set(100, 100, 50);
+  var dirLight = new THREE.DirectionalLight();
+  dirLight.position.set(0, 1, 1);
   scene.add(dirLight);
-  var light = new THREE.AmbientLight( 0xfffff ); // soft white light
+  var light = new THREE.AmbientLight( 0xaaaaaa ); // soft white light. do NOT set to 0xffffff or all shading will seem to vanish
   scene.add( light );
 }
 
@@ -607,10 +607,10 @@ function setupCSGModels() {
   csgPrimitiveMesh = subtract_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
-  window.csgPrimitiveMaterialFlat = new THREE.MeshPhongMaterial ( {
-    color:0xff00FF, 
+  window.csgPrimitiveMaterialFlat = new THREE.MeshStandardMaterial ( {
     shading: THREE.FlatShading,
-    side: THREE.DoubleSide
+    color:0xffffff,
+    vertexColors: THREE.FaceColors // you need this if you want to change face colors later
   } );
 
   // http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
@@ -956,13 +956,6 @@ function drawSectionLineThreeMesh() {
             }
             sectionEdges[iKey2][iKey1] = true;
             sectionEdgesCount++;
-            if (iKey1 == '-0.13960847_0.50000000') {
-              console.log('iKey1');
-              debugger;
-            } else if (iKey2 == '-0.13960847_0.50000000') {
-              console.log('iKey2');
-              debugger;
-            }
             intersections = [];
           }
         }
@@ -973,6 +966,7 @@ function drawSectionLineThreeMesh() {
 
     if (sectionExists) {
 
+      // debugging
       for (var seKey in sectionEdges) {
         var childCt = 0;
         for (var seChild in sectionEdges[seKey]) {
@@ -1280,7 +1274,6 @@ function render() {
   updateCutplane();
   updateCursorTracking();
   drawSectionLineThreeMesh();
-  //drawSectionLineJSM();
   updatePickSquare();
 
   firstRender = false;
@@ -1304,7 +1297,6 @@ parent = new THREE.Object3D();
 scene.add( parent );
 
 
-//setupJSModel();
 setupCSGModels();
 setupHelp();
 setupCutplane();

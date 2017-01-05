@@ -9,8 +9,10 @@
 //  [X] make cursor look more like the old cursor
 //  [X] Use cutSections to determine what is near the cursor instead of sectionPoints
 //  [X] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
-//  [ ] Support multiple objects
-//  [ ] Tie cutSections back to model somehow, or use jsm's viewer instead
+//  [X] Support multiple objects
+//  [X] Tie cutSections back to model somehow, or use jsm's viewer instead
+//  [ ] Proper support of dragging of multiple objects
+//  [ ] Use geometry.dynamic = true and geometry.verticesNeedUpdate=true to allow edge and vertex dragging
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
 //      https://en.wikipedia.org/wiki/Vector_projection
@@ -629,6 +631,11 @@ function setupCSGModels() {
   csgPrimitives.add(box2);  
   setupSelectMesh(box2);
 
+  /* Hack */
+  // cf http://stackoverflow.com/questions/15384078/updating-a-geometry-inside-a-mesh-does-nothing
+  csgPrimitives.children[1].geometry.vertices[0].x = 1.75; 
+  csgPrimitives.children[1].geometry.verticesNeedUpdate = true;
+
 }
 
 
@@ -661,6 +668,34 @@ function setupLineSegment() {
 // --------------------------------------------------------------------------------
 // Main interaction functions
 // --------------------------------------------------------------------------------
+
+function fillInOneEdgeMap(v1,v2,face,edgeMap) {
+  var edgeKey = v1 + '_' + v2;
+  if (!edgeMap.hasOwnProperty(edgeKey)) {
+    edgeMap[edgeKey] = [];
+  }
+  edgeMap[edgeKey].push(face);
+  edgeKey = v2 + '_' + v1;
+  if (!edgeMap.hasOwnProperty(edgeKey)) {
+    edgeMap[edgeKey] = [];
+  }
+  edgeMap[edgeKey].push(face);
+}
+
+function updateEdgeMaps(csgPrimitive) {
+  var geometry = csgPrimitive.geometry;
+  var edgeMap = {};
+  var faceStack = [];
+  var edge;
+
+  for (var face of geometry.faces) {
+    fillInOneEdgeMap(face.a,face.b,face,edgeMap);
+    fillInOneEdgeMap(face.b,face.c,face,edgeMap);
+    fillInOneEdgeMap(face.a,face.c,face,edgeMap);
+  }    
+
+  csgPrimitive.edgeMap = edgeMap;
+}
 
 
 // http://geomalgorithms.com/a05-_intersect-1.html
@@ -1154,7 +1189,7 @@ function updateCutplane() {
       if ((selectMeshDisplayed != undefined) && mouseDown) {
         var zDiff = plane.position.z - prevPlaneZ;
         csgPrimitiveSelected.geometry.translate(0,0,zDiff);
-        console.log('Translating object in Z by:', zDiff);
+        // console.log('Translating object in Z by:', zDiff);
       }
 
     }
@@ -1201,9 +1236,13 @@ function checkWireFrameToggle() {
     if (useWireFrame == previousUseWireFrame) {
       useWireFrame = !useWireFrame;
       if (useWireFrame) {
-        csgPrimitiveMesh.material = window.csgPrimitiveMaterialWire;
+        for (var csgPrimitive of csgPrimitives.children) {
+          csgPrimitive.material = window.csgPrimitiveMaterialWire;
+        }
       } else {
-        csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
+        for (var csgPrimitive of csgPrimitives.children) {
+          csgPrimitive.material = window.csgPrimitiveMaterialFlat;
+        }
       }
       console.log('useWireFrame:', useWireFrame);
     }

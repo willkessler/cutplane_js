@@ -38,6 +38,7 @@ var jsmPrimitive;
 var jsmPrimitiveMesh;
 
 var csgPrimitiveMesh;
+var sectionEdges;
 
 var controls;
 var vertices;
@@ -631,12 +632,13 @@ function setupCSGModels() {
 
   setupSelectMesh(box2);
   updateEdgeMaps(box2);
+
   csgPrimitives.add(box2);  
 
   /* Hack */
   // cf http://stackoverflow.com/questions/15384078/updating-a-geometry-inside-a-mesh-does-nothing
-  csgPrimitives.children[1].geometry.vertices[0].x = 1.75; 
-  csgPrimitives.children[1].geometry.verticesNeedUpdate = true;
+//  csgPrimitives.children[1].geometry.vertices[0].x = 1.75; 
+//  csgPrimitives.children[1].geometry.verticesNeedUpdate = true;
 
 }
 
@@ -852,10 +854,10 @@ function drawSectionLineJSM() {
 
 // TODO: 
 // [X]  Fix fillInOneEdgeMap so that edges are only stored once
-// [ ]  Compute section line from edge maps. 
-// [ ]  Separately compute faces that are in the plane and highlight them differently
+// [ ]  Compute section line from edge maps.  WONT_DO
 // [ ]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
 // [ ]  Fix picking and dragging code to be more flexible
+// [ ]  Separately compute faces that are in the plane and highlight them differently
 
 function fillInOneEdgeMap(v1,v2,face,edgeMap) {
   var edgeKey = v1 + '_' + v2;
@@ -899,13 +901,12 @@ function drawSectionLineThreeMesh() {
   var P0, P1;
   var sectionExists;
   var face, faceLen;
-  var sectionEdges = {};
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
-//  if (!(movingCutplane || firstRender) ) {
-//    return; // don't update the sections if not moving the cutplane
-//  }
+  if (!(movingCutplane || firstRender) ) {
+    return; // don't update the sections if not moving the cutplane
+  }
 
   var intersectionsLog = {};
   var facesChecked = 0;
@@ -915,6 +916,8 @@ function drawSectionLineThreeMesh() {
   }
   cutSections = new THREE.Object3D();
   parent.add(cutSections);
+
+  sectionEdges = {};
 
   for (var csgPrimitive of csgPrimitives.children) {
     sectionExists = false;
@@ -948,13 +951,13 @@ function drawSectionLineThreeMesh() {
             iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
             finalIKey = iKey2;
             if (!sectionEdges.hasOwnProperty(iKey1)) {
-              sectionEdges[iKey1] = {};
+              sectionEdges[iKey1] = { face: faces[i], siblings: []};
             }
-            sectionEdges[iKey1][iKey2] = true;
+            sectionEdges[iKey1].siblings.push(iKey2);
             if (!sectionEdges.hasOwnProperty(iKey2)) {
-              sectionEdges[iKey2] = {};
+              sectionEdges[iKey2] = { face: faces[i], siblings: []};
             }
-            sectionEdges[iKey2][iKey1] = true;
+            sectionEdges[iKey2].siblings.push(iKey1);
             sectionEdgesCount++;
             intersections = [];
           }
@@ -978,13 +981,13 @@ function drawSectionLineThreeMesh() {
       }
 
       /* Now start at final iKey on the sectionEdges array, and walk it to build up section lines */
-      var sectionPoints = [];
       var walked = {};
       var numWalked = 0;
       var currentIKey = finalIKey, nextIKey;
       var startLoopIKey = finalIKey;
       var cutSection = new THREE.Geometry();
       var sectionCoord;
+      var sectionFace;
       var endedCurrentLoop;
       var coordsRaw;
       var coords;
@@ -993,13 +996,13 @@ function drawSectionLineThreeMesh() {
         coordsRaw = currentIKey.split('_');
         coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
         sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
+        sectionFace = sectionEdges[currentIKey];
         cutSection.vertices.push(sectionCoord);
-        sectionPoints.push({x: coords[0],y:coords[1]});
         numWalked++;
         walked[currentIKey] = true;
         
         nextIKey = undefined;
-        for (var seChild in sectionEdges[currentIKey]) {
+        for (var seChild of sectionEdges[currentIKey].siblings) {
           if (!walked.hasOwnProperty(seChild)) {
             nextIKey = seChild;
             break;
@@ -1026,7 +1029,6 @@ function drawSectionLineThreeMesh() {
           coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
           sectionCoord = new THREE.Vector3(parseFloat(coords[0]), parseFloat(coords[1]), plane.position.z + 0.01);
           cutSection.vertices.push(sectionCoord);
-          sectionPoints.push({x: coords[0],y:coords[1]});
 
           cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
           var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
@@ -1066,23 +1068,34 @@ function drawSectionLineThreeMesh() {
 function updatePickSquare() {
   //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+  var siblings, coord1, coord2, coordsRaw;
   if (cutSections && cutSections.children) {
-    for (var i = 0; i < cutSections.children.length; ++i) {
-      var cutSection = cutSections.children[i];
-      for (var k = 0; k < cutSection.geometry.vertices.length - 1; ++k) {
-        var nearest = distToSegmentSquared(crosshair.position,cutSection.geometry.vertices[k], cutSection.geometry.vertices[k+1]);
-        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
-          nearestMin = nearest.distance;
-          highlightCenter.x = nearest.nearestPoint.x;
-          highlightCenter.y = nearest.nearestPoint.y;
-        }          
-      }
+    for (var sectionEdge in sectionEdges) {
+      siblings = sectionEdges[sectionEdge].siblings;
+      coordsRaw = siblings[0].split('_');
+      coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
+      coordsRaw = siblings[1].split('_');
+      coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
+      var nearest = distToSegmentSquared(crosshair.position,coord1, coord2)
+      if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+        nearestMin = nearest.distance;
+        highlightCenter.x = nearest.nearestPoint.x;
+        highlightCenter.y = nearest.nearestPoint.y;
+        highlightCenter.face = sectionEdges[sectionEdge].face;
+      }          
     }
 
-    /* Render highlight if near a sections loop */
+    /* Render highlight if near a section edge */
     pickSquare.position.x = highlightCenter.x;
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
+    if (highlightCenter.face) {
+      console.log('near face', highlightCenter.face);
+      highlightCenter.face.color.setHex(0xff0000);
+      for (var csgPrimitive of csgPrimitives.children) {
+        csgPrimitive.geometry.colorsNeedUpdate = true;
+      }
+    }
   }
 }
 

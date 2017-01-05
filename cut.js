@@ -42,7 +42,7 @@ var csgPrimitiveMesh;
 var controls;
 var vertices;
 var faces;
-var highlight;
+var pickSquare;
 var selectMeshMaterialUnselected;
 var selectMeshMaterialSelected;
 
@@ -639,7 +639,7 @@ function setupCSGModels() {
 }
 
 
-function setupHighlight() {
+function setupPickSquare() {
   var radius = 0.04;
   var geometry = new THREE.CircleGeometry(radius,20);
   var material = new THREE.MeshBasicMaterial( { 
@@ -649,8 +649,8 @@ function setupHighlight() {
     depthFunc: THREE.AlwaysDepth,
     side: THREE.DoubleSide, 
     opacity: 1.0 } );
-  highlight = new THREE.Mesh( geometry, material );
-  parent.add(highlight);
+  pickSquare = new THREE.Mesh( geometry, material );
+  parent.add(pickSquare);
 }
 
 function setupLineSegment() {
@@ -668,6 +668,12 @@ function setupLineSegment() {
 // --------------------------------------------------------------------------------
 // Main interaction functions
 // --------------------------------------------------------------------------------
+
+// TODO: fix this so that edges are only stored once
+// Compute section line from edge maps. 
+// Separately compute faces that are in the plane and highlight them differently
+// When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
+// Fix picking and dragging code to be more flexible
 
 function fillInOneEdgeMap(v1,v2,face,edgeMap) {
   var edgeKey = v1 + '_' + v2;
@@ -1058,7 +1064,7 @@ function drawSectionLineThreeMesh() {
 // Update functions
 // --------------------------------------------------------------------------------
 
-function updateCursorHighlight() {
+function updatePickSquare() {
   //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   if (cutSections && cutSections.children) {
@@ -1075,9 +1081,9 @@ function updateCursorHighlight() {
     }
 
     /* Render highlight if near a sections loop */
-    highlight.position.x = highlightCenter.x;
-    highlight.position.y = highlightCenter.y;
-    highlight.position.z = plane.position.z + 0.01;
+    pickSquare.position.x = highlightCenter.x;
+    pickSquare.position.y = highlightCenter.y;
+    pickSquare.position.z = plane.position.z + 0.01;
   }
 }
 
@@ -1270,7 +1276,7 @@ function render() {
   updateCursorTracking();
   drawSectionLineThreeMesh();
   //drawSectionLineJSM();
-  updateCursorHighlight();
+  updatePickSquare();
 
   firstRender = false;
 
@@ -1299,7 +1305,7 @@ setupHelp();
 setupCutplane();
 setupRoom();
 setupCrosshair();
-setupHighlight();
+setupPickSquare();
 
 camera.position.set( 0,0, 5);
 //controls.update();

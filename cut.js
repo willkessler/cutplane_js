@@ -621,15 +621,17 @@ function setupCSGModels() {
 
   csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
 
-  csgPrimitives.add( csgPrimitiveMesh );
   setupSelectMesh(csgPrimitiveMesh);
+  updateEdgeMaps(csgPrimitiveMesh);
+  csgPrimitives.add( csgPrimitiveMesh );
 
   var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
   box2.geometry.translate(-0.75,-0.25,-0.75);
   box2.material = window.csgPrimitiveMaterialFlat;
 
-  csgPrimitives.add(box2);  
   setupSelectMesh(box2);
+  updateEdgeMaps(box2);
+  csgPrimitives.add(box2);  
 
   /* Hack */
   // cf http://stackoverflow.com/questions/15384078/updating-a-geometry-inside-a-mesh-does-nothing
@@ -668,40 +670,6 @@ function setupLineSegment() {
 // --------------------------------------------------------------------------------
 // Main interaction functions
 // --------------------------------------------------------------------------------
-
-// TODO: fix this so that edges are only stored once
-// Compute section line from edge maps. 
-// Separately compute faces that are in the plane and highlight them differently
-// When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
-// Fix picking and dragging code to be more flexible
-
-function fillInOneEdgeMap(v1,v2,face,edgeMap) {
-  var edgeKey = v1 + '_' + v2;
-  if (!edgeMap.hasOwnProperty(edgeKey)) {
-    edgeMap[edgeKey] = [];
-  }
-  edgeMap[edgeKey].push(face);
-  edgeKey = v2 + '_' + v1;
-  if (!edgeMap.hasOwnProperty(edgeKey)) {
-    edgeMap[edgeKey] = [];
-  }
-  edgeMap[edgeKey].push(face);
-}
-
-function updateEdgeMaps(csgPrimitive) {
-  var geometry = csgPrimitive.geometry;
-  var edgeMap = {};
-  var faceStack = [];
-  var edge;
-
-  for (var face of geometry.faces) {
-    fillInOneEdgeMap(face.a,face.b,face,edgeMap);
-    fillInOneEdgeMap(face.b,face.c,face,edgeMap);
-    fillInOneEdgeMap(face.a,face.c,face,edgeMap);
-  }    
-
-  csgPrimitive.edgeMap = edgeMap;
-}
 
 
 // http://geomalgorithms.com/a05-_intersect-1.html
@@ -881,6 +849,43 @@ function drawSectionLineJSM() {
 
   }
 }
+
+// TODO: 
+// [X]  Fix fillInOneEdgeMap so that edges are only stored once
+// [ ]  Compute section line from edge maps. 
+// [ ]  Separately compute faces that are in the plane and highlight them differently
+// [ ]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
+// [ ]  Fix picking and dragging code to be more flexible
+
+function fillInOneEdgeMap(v1,v2,face,edgeMap) {
+  var edgeKey = v1 + '_' + v2;
+  var reverseEdgeKey = v2 + '_' + v1;
+  if ((!edgeMap.hasOwnProperty(edgeKey)) && (!edgeMap.hasOwnProperty(reverseEdgeKey))) {
+    edgeMap[edgeKey] = [];
+  }
+
+  if (edgeMap.hasOwnProperty(edgeKey)) {
+    edgeMap[edgeKey].push(face);
+  } else {
+    edgeMap[reverseEdgeKey].push(face);
+  }
+}
+
+function updateEdgeMaps(csgPrimitive) {
+  var geometry = csgPrimitive.geometry;
+  var edgeMap = {};
+  var faceStack = [];
+  var edge;
+
+  for (var face of geometry.faces) {
+    fillInOneEdgeMap(face.a,face.b,face,edgeMap);
+    fillInOneEdgeMap(face.b,face.c,face,edgeMap);
+    fillInOneEdgeMap(face.a,face.c,face,edgeMap);
+  }    
+
+  csgPrimitive.edgeMap = edgeMap;
+}
+
 
 function faceInCutplane(face, vertices) {
   return ( (Math.abs(vertices[face[0]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&

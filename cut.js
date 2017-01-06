@@ -38,7 +38,6 @@ var jsmPrimitive;
 var jsmPrimitiveMesh;
 
 var csgPrimitiveMesh;
-var sectionEdges;
 
 var controls;
 var vertices;
@@ -72,6 +71,7 @@ var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.005;
 var TO_FIXED_DECIMAL_PLACES = 4;
+var COPLANAR_ANGLE_TOLERANCE = 5; // degrees, not radians
 
 var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
@@ -856,35 +856,34 @@ function drawSectionLineJSM() {
 
 // TODO: 
 // [X]  Fix fillInOneEdgeMap so that edges are only stored once
-// [ ]  Compute section line from edge maps.  WONT_DO
-// [ ]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
+// [N]  Compute section line from edge maps.  WONT_DO
+// [X]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
 // [ ]  Fix picking and dragging code to be more flexible
 // [ ]  Separately compute faces that are in the plane and highlight them differently
 
 function fillInOneEdgeMap(v1,v2,face,edgeMap) {
   var edgeKey = v1 + '_' + v2;
   var reverseEdgeKey = v2 + '_' + v1;
-  if ((!edgeMap.hasOwnProperty(edgeKey)) && (!edgeMap.hasOwnProperty(reverseEdgeKey))) {
-    edgeMap[edgeKey] = [];
-  }
-
   if (edgeMap.hasOwnProperty(edgeKey)) {
     edgeMap[edgeKey].push(face);
-  } else {
+  } else if (edgeMap.hasOwnProperty(reverseEdgeKey)) {
     edgeMap[reverseEdgeKey].push(face);
+  } else {
+    edgeMap[edgeKey] = [];
+    edgeMap[edgeKey].push(face);
   }
+
 }
 
 function updateEdgeMaps(csgPrimitive) {
   var geometry = csgPrimitive.geometry;
   var edgeMap = {};
-  var faceStack = [];
-  var edge;
 
   for (var face of geometry.faces) {
     fillInOneEdgeMap(face.a,face.b,face,edgeMap);
     fillInOneEdgeMap(face.b,face.c,face,edgeMap);
-    fillInOneEdgeMap(face.a,face.c,face,edgeMap);
+    fillInOneEdgeMap(face.c,face.a,face,edgeMap);
+    face.examTime = 0;
   }    
 
   csgPrimitive.edgeMap = edgeMap;
@@ -903,6 +902,7 @@ function drawSectionLineThreeMesh() {
   var P0, P1;
   var sectionExists;
   var face, faceLen;
+  var sectionEdges;
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
@@ -919,9 +919,9 @@ function drawSectionLineThreeMesh() {
   cutSections = new THREE.Object3D();
   parent.add(cutSections);
 
-  sectionEdges = {};
-
   for (var csgPrimitive of csgPrimitives.children) {
+    csgPrimitive.sectionEdges = {};
+    sectionEdges = csgPrimitive.sectionEdges;
     sectionExists = false;
     var csgGeometry = csgPrimitive.geometry;
     var vertices = csgGeometry.vertices;
@@ -1044,7 +1044,7 @@ function drawSectionLineThreeMesh() {
           console.log('Closing loop.');
           console.log('walked:');
           for (var walkedCk in walked) {
-            console.log(walkedCk, sectionEdges[walkedCk]);
+             console.log(walkedCk, csgPrimitive.sectionEdges[walkedCk]);
           }
 
           debugger;
@@ -1065,14 +1065,63 @@ function drawSectionLineThreeMesh() {
 // Update functions
 // --------------------------------------------------------------------------------
 
+function checkCoplanarity(f1, f2) {
+  return (f1.normal.angleTo(f2.normal) * (180/Math.PI) <= COPLANAR_ANGLE_TOLERANCE);
+}
+
+function findAdjacentFaces(v1, v2, csgPrimitive) {
+  var edgeKey = v1 + '_' + v2;
+  var reverseEdgeKey = v2 + '_' + v1;
+  if (csgPrimitive.edgeMap.hasOwnProperty(edgeKey)) {
+    var f1 = csgPrimitive.edgeMap[edgeKey][0];
+    var f2 = csgPrimitive.edgeMap[edgeKey][1];
+  } else {
+    var f1 = csgPrimitive.edgeMap[reverseEdgeKey][0];
+    var f2 = csgPrimitive.edgeMap[reverseEdgeKey][1];
+  }
+  return ({ face1: f1, face2: f2 });
+}
+
+function findCoplanarAdjacentFaces(v1, v2, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive) {
+  var adjacentFaces = findAdjacentFaces(v1, v2, csgPrimitive);
+  if ((adjacentFaces.face1.examTime < examTime) && checkCoplanarity(evalFace,adjacentFaces.face1)) {
+    evalStack.push(adjacentFaces.face1);
+    coplanarFaces.push(adjacentFaces.face1);
+    adjacentFaces.face1.examTime = examTime;
+  }
+  if ((adjacentFaces.face2.examTime < examTime) && checkCoplanarity(evalFace,adjacentFaces.face2)) {
+    evalStack.push(adjacentFaces.face2);
+    coplanarFaces.push(adjacentFaces.face2);
+    adjacentFaces.face2.examTime = examTime;
+  }
+}
+
+
+function applyToCoplanarFaces(face, csgPrimitive, callback) {
+  var evalStack = [], coplanarFaces = [], evalFace;
+  var now = new Date();
+  var examTime = now.getTime();
+  evalStack.push(face);
+  while (evalStack.length > 0) {
+    evalFace = evalStack.pop();
+    findCoplanarAdjacentFaces(evalFace.a, evalFace.b, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
+    findCoplanarAdjacentFaces(evalFace.b, evalFace.c, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
+    findCoplanarAdjacentFaces(evalFace.c, evalFace.a, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
+  }
+  /* Take action on all coplanars */
+  for (var actionFace of coplanarFaces) {
+    callback(actionFace);
+  }
+}
+
 function updatePickSquare() {
   //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
-  if (cutSections && cutSections.children) {
-    for (var sectionEdge in sectionEdges) {
+  for (var csgPrimitive of csgPrimitives.children) {
+    for (var sectionEdge in csgPrimitive.sectionEdges) {
       coordsArray = [];
-      siblings = sectionEdges[sectionEdge];
+      siblings = csgPrimitive.sectionEdges[sectionEdge];
       coordsRaw = sectionEdge.split('_');
       coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
 
@@ -1093,9 +1142,9 @@ function updatePickSquare() {
           highlightCenter.x = nearest.nearestPoint.x;
           highlightCenter.y = nearest.nearestPoint.y;
           if (ci == 0) {
-            highlightCenter.face = sectionEdges[sectionEdge][0].face;
+            highlightCenter.face = csgPrimitive.sectionEdges[sectionEdge][0].face;
           } else {
-            highlightCenter.face = sectionEdges[sectionEdge][1].face;
+            highlightCenter.face = csgPrimitive.sectionEdges[sectionEdge][1].face;
           }
         }          
       }
@@ -1107,10 +1156,10 @@ function updatePickSquare() {
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.face) {
       // console.log('near face', highlightCenter.face);
-      highlightCenter.face.color.setHex(0xff0000);
-      for (var csgPrimitive of csgPrimitives.children) {
-        csgPrimitive.geometry.colorsNeedUpdate = true;
-      }
+      applyToCoplanarFaces(highlightCenter.face, csgPrimitive, function(face) {
+        face.color.setHex(0xff0000);
+      });
+      csgPrimitive.geometry.colorsNeedUpdate = true;
     }
   }
 }

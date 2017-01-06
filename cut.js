@@ -50,6 +50,7 @@ var selectMeshMaterialSelected;
 var selectMeshDisplayed = undefined;
 var csgPrimitiveSelected = undefined;
 
+var dragging = false;
 var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
@@ -626,7 +627,8 @@ function setupCSGModels() {
   updateEdgeMaps(csgPrimitiveMesh);
   csgPrimitives.add( csgPrimitiveMesh );
 
-  var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
+  //var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
+  var box2 = new THREE.Mesh( new THREE.BoxGeometry( width, height, length ) );
   box2.geometry.translate(-0.75,-0.25,-0.75);
   box2.material = window.csgPrimitiveMaterialFlat;
 
@@ -904,7 +906,7 @@ function drawSectionLineThreeMesh() {
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
-  if (!(movingCutplane || firstRender) ) {
+  if (!(movingCutplane || dragging || firstRender) ) {
     return; // don't update the sections if not moving the cutplane
   }
 
@@ -951,13 +953,13 @@ function drawSectionLineThreeMesh() {
             iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
             finalIKey = iKey2;
             if (!sectionEdges.hasOwnProperty(iKey1)) {
-              sectionEdges[iKey1] = { face: faces[i], siblings: []};
+              sectionEdges[iKey1] = [];
             }
-            sectionEdges[iKey1].siblings.push(iKey2);
+            sectionEdges[iKey1].push({ point: iKey2, face: faces[i] });
             if (!sectionEdges.hasOwnProperty(iKey2)) {
-              sectionEdges[iKey2] = { face: faces[i], siblings: []};
+              sectionEdges[iKey2] = [];
             }
-            sectionEdges[iKey2].siblings.push(iKey1);
+            sectionEdges[iKey2].push({ point: iKey1, face: faces[i] });
             sectionEdgesCount++;
             intersections = [];
           }
@@ -1002,9 +1004,9 @@ function drawSectionLineThreeMesh() {
         walked[currentIKey] = true;
         
         nextIKey = undefined;
-        for (var seChild of sectionEdges[currentIKey].siblings) {
-          if (!walked.hasOwnProperty(seChild)) {
-            nextIKey = seChild;
+        for (var seChild of sectionEdges[currentIKey]) {
+          if (!walked.hasOwnProperty(seChild.point)) {
+            nextIKey = seChild.point;
             break;
           }
         }
@@ -1014,11 +1016,9 @@ function drawSectionLineThreeMesh() {
           endedCurrentLoop = true;
           /* Find a candidate to start a new loop, if we can. */
           for (var seKey in sectionEdges) {
-            if (sectionEdges.hasOwnProperty(seKey)) {
-              if (!walked.hasOwnProperty(seKey)) {
-                nextIKey = seKey;
-                break;
-              }
+            if (!walked.hasOwnProperty(seKey)) {
+              nextIKey = seKey;
+              break;
             }
           }
         }
@@ -1068,21 +1068,37 @@ function drawSectionLineThreeMesh() {
 function updatePickSquare() {
   //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
-  var siblings, coord1, coord2, coordsRaw;
+  var siblings, coordsArray, coord1, coord2, coordsRaw;
   if (cutSections && cutSections.children) {
     for (var sectionEdge in sectionEdges) {
-      siblings = sectionEdges[sectionEdge].siblings;
-      coordsRaw = siblings[0].split('_');
+      coordsArray = [];
+      siblings = sectionEdges[sectionEdge];
+      coordsRaw = sectionEdge.split('_');
       coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
-      coordsRaw = siblings[1].split('_');
+
+      coordsRaw = siblings[0].point.split('_');
       coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
-      var nearest = distToSegmentSquared(crosshair.position,coord1, coord2)
-      if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
-        nearestMin = nearest.distance;
-        highlightCenter.x = nearest.nearestPoint.x;
-        highlightCenter.y = nearest.nearestPoint.y;
-        highlightCenter.face = sectionEdges[sectionEdge].face;
-      }          
+      coordsArray.push(coord1);
+      coordsArray.push(coord2);
+
+      coordsArray.push(coord1);
+      coordsRaw = siblings[1].point.split('_');
+      coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
+      coordsArray.push(coord2);
+
+      for (var ci = 0; ci < 4; ci += 2) {
+        var nearest = distToSegmentSquared(crosshair.position,coordsArray[ci], coordsArray[ci+1])
+        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+          nearestMin = nearest.distance;
+          highlightCenter.x = nearest.nearestPoint.x;
+          highlightCenter.y = nearest.nearestPoint.y;
+          if (ci == 0) {
+            highlightCenter.face = sectionEdges[sectionEdge][0].face;
+          } else {
+            highlightCenter.face = sectionEdges[sectionEdge][1].face;
+          }
+        }          
+      }
     }
 
     /* Render highlight if near a section edge */
@@ -1090,7 +1106,7 @@ function updatePickSquare() {
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.face) {
-      console.log('near face', highlightCenter.face);
+      // console.log('near face', highlightCenter.face);
       highlightCenter.face.color.setHex(0xff0000);
       for (var csgPrimitive of csgPrimitives.children) {
         csgPrimitive.geometry.colorsNeedUpdate = true;
@@ -1146,10 +1162,12 @@ function updateCrosshair() {
     var prevCrossHair = { x: crosshair.position.x, y: crosshair.position.y };
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
+    dragging = false;
     if ((selectMeshDisplayed != undefined) && mouseDown) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       selectMeshDisplayed.geometry.translate(xDiff, yDiff, 0.0);
+      dragging = true;
       // console.log('Translating object by:', xDiff, yDiff);
     }
   }

@@ -585,7 +585,7 @@ function setupCSGModels() {
   // CSG GEOMETRY
   cube_bsp = new ThreeBSP( box );
 
-  var cutgeo = new THREE.SphereGeometry( 0.5,32,32 );
+  var cutgeo = new THREE.SphereGeometry( 0.5,4,4 );
   //var cutgeo = new THREE.CubeGeometry( width / 2, height / 2, length / 2);
 
   // move geometry to where the cut should be
@@ -633,9 +633,9 @@ function setupCSGModels() {
   box2.material = window.csgPrimitiveMaterialFlat;
 
   setupSelectMesh(box2);
-  updateEdgeMaps(box2);
+  //updateEdgeMaps(box2);
 
-  csgPrimitives.add(box2);  
+  //csgPrimitives.add(box2);  
 
   /* Hack */
   // cf http://stackoverflow.com/questions/15384078/updating-a-geometry-inside-a-mesh-does-nothing
@@ -858,8 +858,42 @@ function drawSectionLineJSM() {
 // [X]  Fix fillInOneEdgeMap so that edges are only stored once
 // [N]  Compute section line from edge maps.  WONT_DO
 // [X]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
+// [ ]  Fix tolerance inconsistencies in csg models.
 // [ ]  Fix picking and dragging code to be more flexible
 // [ ]  Separately compute faces that are in the plane and highlight them differently
+
+function findDuplicateVertices(vertices) {
+  var vertexMapRaw = [];
+  for (var v1 in vertices) {
+    vertexMapRaw.push({
+      index:v1, 
+      value: vertices[v1].x.toFixed(5) + '_' + 
+             vertices[v1].y.toFixed(5) + '_' + 
+             vertices[v1].z.toFixed(5)
+    });
+  }
+  var vertexMapSorted = _.sortBy(vertexMapRaw, 'value');
+  var vertexMapDeduped = _.uniq(vertexMapSorted, true, function (p) { return (p.value) });
+
+  var duplicatePointers = {};
+  _.each(vertexMapRaw, function(item) {
+    var key = _.find(vertexMapDeduped, function(vmd) {return vmd.value == item.value });
+    duplicatePointers[item.index] = parseInt(key.index);
+  });
+
+  return(duplicatePointers);
+}
+    
+function correctDuplicateVertices(geometry) {
+  var duplicateVertices = findDuplicateVertices(geometry.vertices);
+  for (var face of geometry.faces) {
+    face.a = duplicateVertices[face.a];
+    face.b = duplicateVertices[face.b];
+    face.c = duplicateVertices[face.c];
+  }
+}
+
+
 
 function fillInOneEdgeMap(v1,v2,face,edgeMap) {
   var edgeKey = v1 + '_' + v2;
@@ -880,6 +914,10 @@ function updateEdgeMaps(csgPrimitive) {
   var edgeMap = {};
 
   for (var face of geometry.faces) {
+    if (face.a == 42 || face.b == 42 || face.c == 42) {
+      debugger;
+    }
+
     fillInOneEdgeMap(face.a,face.b,face,edgeMap);
     fillInOneEdgeMap(face.b,face.c,face,edgeMap);
     fillInOneEdgeMap(face.c,face.a,face,edgeMap);

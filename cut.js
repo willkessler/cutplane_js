@@ -70,6 +70,7 @@ var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.005;
+var POINT_ON_LINE_TOLERANCE = 0.005;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = 5; // degrees, not radians
 
@@ -217,6 +218,28 @@ function distToSegment(p, v, w) {
   return Math.sqrt(dss.distance); 
 }
 
+function distToSegmentSquared3d(p,v,w) {
+  var l3 = dist3(v, w);
+  if (l3 == 0) { 
+    return { nearestPoint: v, distance: dist3(p, v) };
+  }
+  var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y) + (p.z - v.z) * (p.z - v.z)) / l3;
+  t = Math.max(0, Math.min(1, t));
+  var nearestPoint = { x: v.x + t * (w.x - v.x),
+                       y: v.y + t * (w.y - v.y),
+                       z: v.z + t * (w.z - v.z)};
+  var nearestRecord = {
+    nearestPoint: nearestPoint,
+    distance: dist3(p, nearestPoint)
+  };
+  //console.log('nearestRecord, dist:', nearestRecord.distance, 'X:', nearestRecord.nearestPoint.x, 'Y:', nearestRecord.nearestPoint.y);
+  return ( nearestRecord );
+}
+
+function distToSegment3d(p, v, w) { 
+  var dss = distToSegmentSquared(p,v,w);
+  return Math.sqrt(dss.distance); 
+}
 
 /* from: https://github.com/substack/point-in-polygon/blob/master/index.js */
 function pointInPoly (point, poly) {
@@ -284,6 +307,45 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 
 function pointsAreEqual(P0, P1) {
   return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
+}
+
+function splitAdjoiningFace(face, faceIndex, geometry) {
+  var faceArray, adjoinP1, adjoinP2;
+  var faceLen = 3, splitPoint;
+  var faceArray = [ face.a, face.b, face.c ];
+  var vertices = geometry.vertices;
+  var adjoinFace;
+  for (var adjoinFaceIndex in geometry.faces) {
+    adjoinFace = geometry.faces[adjoinFaceIndex];
+    if (checkCoplanarity(face, adjoinFace)) {
+      adjoinFaceArray = [ adjoinFace.a, adjoinFace.b, adjoinFace.c ];
+      for (var i = 0; i < faceLen; ++i) {
+        adjoinP1 = adjoinFaceArray[i];
+        adjoinP2 = adjoinFaceArray[(i + 1) % faceLen];
+        for (var j = 0; j < faceLen; ++j) {
+          if ((faceArray[j] != adjoinP1) && (faceArray[j] != adjoinP2)) {
+            splitPoint = distToSegmentSquared3d(vertices[faceArray[j]], vertices[adjoinP1], vertices[adjoinP2]);
+            if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
+              console.log('We found split point:', splitPoint, ' on adjoining face:', adjoinFace);
+              var newPoint = new THREE.Vector3(splitPoint.nearestPoint.x, splitPoint.nearestPoint.y, splitPoint.nearestPoint.z);
+              geometry.vertices.push(newPoint);
+              var newPointIndex = geometry.vertices.length - 1;
+              adjoinFace.a = faceArray[i];
+              adjoinFace.b = newPointIndex;
+              adjoinFace.c = faceArray[(i+2) % faceLen];
+              var newFace = adjoinFace.clone();
+              newFace.a = newPointIndex;
+              newFace.b = faceArray[(i+2) % faceLen];
+              newFace.c = faceArray[i];
+              geometry.faces.push(newFace);
+
+              return(splitPoint);
+            }
+          }
+        }
+      }
+    }
+  }    
 }
 
 // --------------------------------------------------------------------------------
@@ -590,7 +652,8 @@ function setupCSGModels() {
 
   // move geometry to where the cut should be
   var matrix = new THREE.Matrix4();
-  matrix.setPosition( new THREE.Vector3(0.25, 0.25, 0.25) );
+  //matrix.setPosition( new THREE.Vector3(0.25, 0.25, 0.25) );
+  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) );
   cutgeo.applyMatrix( matrix );
 
   var sub =  new THREE.Mesh( cutgeo );
@@ -624,8 +687,9 @@ function setupCSGModels() {
   csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
 
   setupSelectMesh(csgPrimitiveMesh);
-  updateEdgeMaps(csgPrimitiveMesh);
   csgPrimitives.add( csgPrimitiveMesh );
+  correctDuplicateVertices(csgPrimitiveMesh.geometry);
+  updateEdgeMaps(csgPrimitiveMesh);
 
   //var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
   var box2 = new THREE.Mesh( new THREE.BoxGeometry( width, height, length ) );
@@ -898,6 +962,36 @@ function correctDuplicateVertices(geometry) {
 function fillInOneEdgeMap(v1,v2,face,edgeMap) {
   var edgeKey = v1 + '_' + v2;
   var reverseEdgeKey = v2 + '_' + v1;
+/*
+  console.log('edgeKey:', edgeKey, 'reverseEdgeKey:', reverseEdgeKey, 'face:[', face.a, face.b,face.c, face.a, '] [',
+              csgPrimitives.children[0].geometry.vertices[v1],
+              csgPrimitives.children[0].geometry.vertices[v2],
+              ']'
+  );
+*/
+
+  var fixAmt = 1;
+  if ((csgPrimitives.children[0].geometry.vertices[v1].x.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].x.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v1].y.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].y.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v1].z.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].z.toFixed(fixAmt))) {
+    console.log('v1 == v[15], v1=', v1);
+  }
+  if ((csgPrimitives.children[0].geometry.vertices[v2].x.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].x.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v2].y.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].y.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v2].z.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].z.toFixed(fixAmt))) {
+    console.log('v2 == v[15], v2=', v2);
+  }
+  if ((csgPrimitives.children[0].geometry.vertices[v1].x.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].x.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v1].y.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].y.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v1].z.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].z.toFixed(fixAmt))) {
+    console.log('v1 == v[16], v1=', v1);
+  }
+  if ((csgPrimitives.children[0].geometry.vertices[v2].x.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].x.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v2].y.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].y.toFixed(fixAmt)) &&
+      (csgPrimitives.children[0].geometry.vertices[v2].z.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].z.toFixed(fixAmt))) {
+    console.log('v2 == v[16], v2=', v2);
+  }
+
   if (edgeMap.hasOwnProperty(edgeKey)) {
     edgeMap[edgeKey].push(face);
   } else if (edgeMap.hasOwnProperty(reverseEdgeKey)) {
@@ -914,17 +1008,29 @@ function updateEdgeMaps(csgPrimitive) {
   var edgeMap = {};
 
   for (var face of geometry.faces) {
-    if (face.a == 42 || face.b == 42 || face.c == 42) {
-      debugger;
-    }
-
     fillInOneEdgeMap(face.a,face.b,face,edgeMap);
     fillInOneEdgeMap(face.b,face.c,face,edgeMap);
     fillInOneEdgeMap(face.c,face.a,face,edgeMap);
     face.examTime = 0;
+/*
+    if (face.a == 31 && face.b == 7 && face.c == 1) {
+      face.color.setHex(0xff0000);
+    }
+*/
   }    
 
   csgPrimitive.edgeMap = edgeMap;
+  redFace = 0;
+
+/*
+  setInterval(function() { 
+    console.log('Redding face:', redFace);
+    csgPrimitives.children[0].geometry.faces[redFace].color.setHex(0xff0000); 
+    csgPrimitives.children[0].geometry.colorsNeedUpdate = true;
+    redFace++;
+  }, 1000);
+*/
+
 }
 
 

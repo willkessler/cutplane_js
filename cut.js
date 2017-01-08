@@ -65,6 +65,10 @@ var objectSelectable = false;
 var firstRender = true;
 var mouseDown = false;
 
+var allLabels = [];
+var activeFace = -1;
+var activeFaceStr = '';
+
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
@@ -309,7 +313,7 @@ function pointsAreEqual(P0, P1) {
   return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
 }
 
-function splitAdjoiningFace(face, faceIndex, geometry) {
+function splitAdjoiningFace(face, geometry) {
   var faceArray, adjoinP1, adjoinP2;
   var faceLen = 3, splitPoint;
   var faceArray = [ face.a, face.b, face.c ];
@@ -341,7 +345,7 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
               newFace.c = adjoinFaceArray[(i+2) % faceLen];
               geometry.faces.push(newFace);
 
-              var newVertexUv = _.clone(geometry.faceVertexUvs[0][faceIndex]);
+              var newVertexUv = _.clone(geometry.faceVertexUvs[0][adjoinFaceIndex]);
               geometry.faceVertexUvs[0].push(newVertexUv);
 
               return(splitPoint);
@@ -352,6 +356,60 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
     }
   }    
 }
+
+/* From http://stackoverflow.com/questions/23514274/three-js-2d-text-sprite-labels */
+
+function roundRect(context, x, y, w, h, r) { 
+  context.beginPath(); 
+  context.moveTo(x + r, y); 
+  context.lineTo(x + w - r, y); 
+  context.quadraticCurveTo(x + w, y, x + w, y + r); 
+  context.lineTo(x + w, y + h - r); 
+  context.quadraticCurveTo(x + w, y + h, x + w - r, y + h); 
+  context.lineTo(x + r, y + h); 
+  context.quadraticCurveTo(x, y + h, x, y + h - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+  context.closePath(); 
+  context.fill(); 
+  context.stroke(); 
+} 
+
+function makeTextSprite( message, parameters )
+{
+  if ( parameters === undefined ) parameters = {};
+  var fontface = parameters.hasOwnProperty("fontface") ? parameters["fontface"] : "Arial";
+  var fontsize = parameters.hasOwnProperty("fontsize") ? parameters["fontsize"] : 18;
+  var borderThickness = parameters.hasOwnProperty("borderThickness") ? parameters["borderThickness"] : 4;
+  var borderColor = parameters.hasOwnProperty("borderColor") ?parameters["borderColor"] : { r:0, g:0, b:0, a:1.0 };
+  var backgroundColor = parameters.hasOwnProperty("backgroundColor") ?parameters["backgroundColor"] : { r:255, g:255, b:255, a:1.0 };
+  var textColor = parameters.hasOwnProperty("textColor") ?parameters["textColor"] : { r:0, g:0, b:0, a:1.0 };
+
+  var canvas = document.createElement('canvas');
+  var context = canvas.getContext('2d');
+  context.font = "Bold " + fontsize + "px " + fontface;
+  var metrics = context.measureText( message );
+  var textWidth = metrics.width;
+
+  context.fillStyle   = "rgba(" + backgroundColor.r + "," + backgroundColor.g + "," + backgroundColor.b + "," + backgroundColor.a + ")";
+  context.strokeStyle = "rgba(" + borderColor.r + "," + borderColor.g + "," + borderColor.b + "," + borderColor.a + ")";
+
+  context.lineWidth = borderThickness;
+  roundRect(context, borderThickness/2, borderThickness/2, (textWidth + borderThickness) * 1.1, fontsize * 1.4 + borderThickness, 8);
+
+  context.fillStyle = "rgba("+textColor.r+", "+textColor.g+", "+textColor.b+", 1.0)";
+  context.fillText( message, borderThickness, fontsize + borderThickness);
+
+  var texture = new THREE.Texture(canvas) 
+  texture.needsUpdate = true;
+
+  var spriteMaterial = new THREE.SpriteMaterial( { map: texture } );
+  var sprite = new THREE.Sprite( spriteMaterial );
+  sprite.scale.set(1,1,1);
+  return sprite;  
+}
+
+/* Old not working, From stemkoski https://github.com/stemkoski/stemkoski.github.com/blob/master/Three.js/Sprite-Text-Labels.html */
 
 // --------------------------------------------------------------------------------
 // Setup functions
@@ -693,8 +751,19 @@ function setupCSGModels() {
 
   setupSelectMesh(csgPrimitiveMesh);
   csgPrimitives.add( csgPrimitiveMesh );
+
   correctDuplicateVertices(csgPrimitiveMesh.geometry);
+
+  console.log('Num faces before:', csgPrimitiveMesh.geometry.faces.length, 'Num verts before:', csgPrimitiveMesh.geometry.vertices.length);
   updateEdgeMaps(csgPrimitiveMesh);
+  console.log('Num faces mid:', csgPrimitiveMesh.geometry.faces.length, 'Num verts mid:', csgPrimitiveMesh.geometry.vertices.length);
+  fillInMissingEdgeMaps();
+  console.log('Num faces after fillin:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after fillin:', csgPrimitiveMesh.geometry.vertices.length);
+  correctDuplicateVertices(csgPrimitiveMesh.geometry);
+  console.log('Num faces after correctDupe:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after correctDupe:', csgPrimitiveMesh.geometry.vertices.length);
+  updateEdgeMaps(csgPrimitiveMesh);
+  console.log('Num faces after all:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after all:', csgPrimitiveMesh.geometry.vertices.length);
+
 
   //var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
   var box2 = new THREE.Mesh( new THREE.BoxGeometry( width, height, length ) );
@@ -703,9 +772,7 @@ function setupCSGModels() {
 
   setupSelectMesh(box2);
 
-  splitAdjoiningFace(csgPrimitives.children[0].geometry.faces[38], 38, csgPrimitives.children[0].geometry);
-  csgPrimitives.children[0].geometry.uvsNeedUpdate = true;
-  csgPrimitives.children[0].geometry.elementsNeedUpdate = true;
+  //splitAdjoiningFace(csgPrimitives.children[0].geometry.faces[38],csgPrimitives.children[0].geometry);
 
   //updateEdgeMaps(box2);
 
@@ -743,6 +810,31 @@ function setupLineSegment() {
   segment.vertices.push(P0,P1);
   var line = new THREE.Line(segment, material);
   parent.add(line);
+}
+
+function setupLabels() {
+  var fontColor = {
+    r: 255,
+    g: 255,
+    b: 0,
+    a: 1.0
+  };
+  for (var csgPrimitive of csgPrimitives.children) {
+    var vertices = csgPrimitive.geometry.vertices;
+    var faces = csgPrimitive.geometry.faces;
+    for (var faceIndex in faces) {
+      var face = faces[faceIndex];
+      var spritey = makeTextSprite( faceIndex, 
+                                { fontsize: 48,
+                                  fontface: 'Georgia',
+                                  textColor: {r:255, g:255, b:0, a:1.0}, 
+                                  borderColor: {r:255, g:255, b:255, a:1.0}, 
+                                  backgroundColor: {r:0, g:0, b:0, a:0.8} } );
+      spritey.position.set(-1000,-1000,-1000);
+      allLabels.push(spritey);
+      parent.add( spritey );
+    }
+  }
 }
 
 // --------------------------------------------------------------------------------
@@ -980,6 +1072,7 @@ function fillInOneEdgeMap(v1,v2,face,edgeMap) {
   );
 */
 
+/*
   var fixAmt = 1;
   if ((csgPrimitives.children[0].geometry.vertices[v1].x.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].x.toFixed(fixAmt)) &&
       (csgPrimitives.children[0].geometry.vertices[v1].y.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[15].y.toFixed(fixAmt)) &&
@@ -1001,6 +1094,7 @@ function fillInOneEdgeMap(v1,v2,face,edgeMap) {
       (csgPrimitives.children[0].geometry.vertices[v2].z.toFixed(fixAmt) == csgPrimitives.children[0].geometry.vertices[16].z.toFixed(fixAmt))) {
     console.log('v2 == v[16], v2=', v2);
   }
+*/
 
   if (edgeMap.hasOwnProperty(edgeKey)) {
     edgeMap[edgeKey].push(face);
@@ -1042,6 +1136,33 @@ function updateEdgeMaps(csgPrimitive) {
 */
 
 }
+
+function fillInMissingEdgeMaps() {
+  for (var csgPrimitive of csgPrimitives.children) {
+    var geometry = csgPrimitive.geometry;
+    var numFaces = geometry.faces.length;
+    for (var soloFaceIndex = 0; soloFaceIndex < numFaces; ++soloFaceIndex) {
+      splitAdjoiningFace(geometry.faces[soloFaceIndex], geometry);
+    }
+    geometry.uvsNeedUpdate = true;
+    geometry.elementsNeedUpdate = true;        
+  }
+}
+
+/*
+    for (var edgeMapKey in csgPrimitive.edgeMap) {
+      var edgeMaps = csgPrimitive.edgeMap[edgeMapKey];
+      if (edgeMaps.length < 2) {
+        console.log('Going to fix edgeMap:', edgeMapKey);
+        var soloFace = edgeMaps[0];
+        splitAdjoiningFace(soloFace, geometry);
+        geometry.uvsNeedUpdate = true;
+        geometry.elementsNeedUpdate = true;        
+      }
+    }
+  }
+}
+*/
 
 
 function faceInCutplane(face, vertices) {
@@ -1310,10 +1431,31 @@ function updatePickSquare() {
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.face) {
       // console.log('near face', highlightCenter.face);
+      /*
       applyToCoplanarFaces(highlightCenter.face, csgPrimitive, function(face) {
         face.color.setHex(0xff0000);
       });
       csgPrimitive.geometry.colorsNeedUpdate = true;
+      */
+
+      activeFaceStr = '';
+      for (ff in csgPrimitive.geometry.faces) {
+        if (csgPrimitive.geometry.faces[ff] == highlightCenter.face) {
+          activeFace = ff;
+          activeFaceStr = 'ID:' + ff + ' V:[' + highlightCenter.face.a + ',' + highlightCenter.face.b + ',' + highlightCenter.face.c + ']';
+          break;
+        }
+      }
+      /*
+      if (ff) {
+        var spritey = allLabels[ff];
+        activeSprite = spritey;
+        var spaceFactor = 0.2;
+        spritey.position.set(highlightCenter.x + highlightCenter.face.normal.x * spaceFactor,
+                             highlightCenter.y + highlightCenter.face.normal.y * spaceFactor,
+                             pickSquare.position.z = plane.position.z + 0.01);
+      }
+      */
     }
   }
 }
@@ -1376,6 +1518,7 @@ function updateCrosshair() {
   }
 
   debugText(['Crosshair set.', 
+             'activeFace:', activeFaceStr,
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
              'X:',       crosshair.position.x, 
@@ -1541,5 +1684,7 @@ setupPickSquare();
 camera.position.set( 0,0, 5);
 //controls.update();
 setupLights();
+//setupLabels();
 
 render();
+

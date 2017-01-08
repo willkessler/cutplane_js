@@ -326,18 +326,23 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
           if ((faceArray[j] != adjoinP1) && (faceArray[j] != adjoinP2)) {
             splitPoint = distToSegmentSquared3d(vertices[faceArray[j]], vertices[adjoinP1], vertices[adjoinP2]);
             if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
-              console.log('We found split point:', splitPoint, ' on adjoining face:', adjoinFace);
+              console.log('j=', j, 'We found split point on adjoining face:', adjoinFace, 'adjoinFaceIndex:', adjoinFaceIndex);
               var newPoint = new THREE.Vector3(splitPoint.nearestPoint.x, splitPoint.nearestPoint.y, splitPoint.nearestPoint.z);
               geometry.vertices.push(newPoint);
               var newPointIndex = geometry.vertices.length - 1;
-              adjoinFace.a = faceArray[i];
+
+              adjoinFace.a = adjoinFaceArray[i];
               adjoinFace.b = newPointIndex;
-              adjoinFace.c = faceArray[(i+2) % faceLen];
+              adjoinFace.c = adjoinFaceArray[(i+2) % faceLen];
+
               var newFace = adjoinFace.clone();
               newFace.a = newPointIndex;
-              newFace.b = faceArray[(i+2) % faceLen];
-              newFace.c = faceArray[i];
+              newFace.b = adjoinFaceArray[(i+1) % faceLen];
+              newFace.c = adjoinFaceArray[(i+2) % faceLen];
               geometry.faces.push(newFace);
+
+              var newVertexUv = _.clone(geometry.faceVertexUvs[0][faceIndex]);
+              geometry.faceVertexUvs[0].push(newVertexUv);
 
               return(splitPoint);
             }
@@ -697,6 +702,11 @@ function setupCSGModels() {
   box2.material = window.csgPrimitiveMaterialFlat;
 
   setupSelectMesh(box2);
+
+  splitAdjoiningFace(csgPrimitives.children[0].geometry.faces[38], 38, csgPrimitives.children[0].geometry);
+  csgPrimitives.children[0].geometry.uvsNeedUpdate = true;
+  csgPrimitives.children[0].geometry.elementsNeedUpdate = true;
+
   //updateEdgeMaps(box2);
 
   //csgPrimitives.add(box2);  

@@ -74,7 +74,7 @@ var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.005;
-var POINT_ON_LINE_TOLERANCE = 0.005;
+var POINT_ON_LINE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = 5; // degrees, not radians
 
@@ -230,14 +230,15 @@ function distToSegmentSquared3d(p,v,w) {
   if (l3 == 0) { 
     return { nearestPoint: v, distance: dist3(p, v) };
   }
-  var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y) + (p.z - v.z) * (p.z - v.z)) / l3;
+  var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y) + (p.z - v.z) * (w.z - v.z)) / l3;
   t = Math.max(0, Math.min(1, t));
   var nearestPoint = { x: v.x + t * (w.x - v.x),
                        y: v.y + t * (w.y - v.y),
                        z: v.z + t * (w.z - v.z)};
   var nearestRecord = {
     nearestPoint: nearestPoint,
-    distance: dist3(p, nearestPoint)
+    distance: dist3(p, nearestPoint),
+    t: t
   };
   //console.log('nearestRecord, dist:', nearestRecord.distance, 'X:', nearestRecord.nearestPoint.x, 'Y:', nearestRecord.nearestPoint.y);
   return ( nearestRecord );
@@ -316,15 +317,23 @@ function pointsAreEqual(P0, P1) {
   return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
 }
 
-function splitAdjoiningFace(face, geometry) {
+function splitAdjoiningFace(face, faceIndex, geometry) {
   var faceArray, adjoinP1, adjoinP2;
   var faceLen = 3, splitPoint;
   var faceArray = [ face.a, face.b, face.c ];
   var vertices = geometry.vertices;
   var adjoinFace;
+
+  adjoinLoop:
   for (var adjoinFaceIndex in geometry.faces) {
     adjoinFace = geometry.faces[adjoinFaceIndex];
     if (checkCoplanarity(face, adjoinFace)) {
+      /*
+      if (!(faceIndex == 20 && adjoinFaceIndex == 17)) {
+        console.log('faceIndex:', faceIndex, 'adjoinFaceIndex:', adjoinFaceIndex);
+        return;
+      }
+      */
       adjoinFaceArray = [ adjoinFace.a, adjoinFace.b, adjoinFace.c ];
       for (var i = 0; i < faceLen; ++i) {
         adjoinP1 = adjoinFaceArray[i];
@@ -333,19 +342,30 @@ function splitAdjoiningFace(face, geometry) {
           if ((faceArray[j] != adjoinP1) && (faceArray[j] != adjoinP2)) {
             splitPoint = distToSegmentSquared3d(vertices[faceArray[j]], vertices[adjoinP1], vertices[adjoinP2]);
             if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
-              console.log('j=', j, 'We found split point on adjoining face:', adjoinFace, 'adjoinFaceIndex:', adjoinFaceIndex);
+              console.log('j=', j, 'Source face:', faceIndex, 'We found split point on adjoining face index:', adjoinFaceIndex, adjoinFace);
+
               /* Dont use newPoint. Use faceArray[j] as the index.
                * Also, make a stack of faces to split so we don't split more than once if we don't have to. */
+
+              /*
               var newPoint = new THREE.Vector3(splitPoint.nearestPoint.x, splitPoint.nearestPoint.y, splitPoint.nearestPoint.z);
               geometry.vertices.push(newPoint);
               var newPointIndex = geometry.vertices.length - 1;
 
+              if (faceIndex == 12 && adjoinFaceIndex == 17) {
+                debugger;
+              }
+              if (adjoinFaceIndex == 17) {
+                console.log('Splitting.');
+              }
+              */
+
               adjoinFace.a = adjoinFaceArray[i];
-              adjoinFace.b = newPointIndex;
+              adjoinFace.b = faceArray[j];
               adjoinFace.c = adjoinFaceArray[(i+2) % faceLen];
 
               var newFace = adjoinFace.clone();
-              newFace.a = newPointIndex;
+              newFace.a = faceArray[j];
               newFace.b = adjoinFaceArray[(i+1) % faceLen];
               newFace.c = adjoinFaceArray[(i+2) % faceLen];
               geometry.faces.push(newFace);
@@ -353,7 +373,7 @@ function splitAdjoiningFace(face, geometry) {
               var newVertexUv = _.clone(geometry.faceVertexUvs[0][adjoinFaceIndex]);
               geometry.faceVertexUvs[0].push(newVertexUv);
 
-              return(splitPoint);
+              continue adjoinLoop;
             }
           }
         }
@@ -781,8 +801,6 @@ function setupCSGModels() {
 
   setupSelectMesh(box2);
 
-  //splitAdjoiningFace(csgPrimitives.children[0].geometry.faces[38],csgPrimitives.children[0].geometry);
-
   //updateEdgeMaps(box2);
 
   //csgPrimitives.add(box2);  
@@ -1151,7 +1169,7 @@ function fillInMissingEdgeMaps() {
     var geometry = csgPrimitive.geometry;
     var numFaces = geometry.faces.length;
     for (var soloFaceIndex = 0; soloFaceIndex < numFaces; ++soloFaceIndex) {
-      splitAdjoiningFace(geometry.faces[soloFaceIndex], geometry);
+      splitAdjoiningFace(geometry.faces[soloFaceIndex], soloFaceIndex, geometry);
     }
     geometry.uvsNeedUpdate = true;
     geometry.elementsNeedUpdate = true;        

@@ -327,7 +327,7 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
   adjoinLoop:
   for (var adjoinFaceIndex in geometry.faces) {
     adjoinFace = geometry.faces[adjoinFaceIndex];
-    if (checkCoplanarity(face, adjoinFace)) {
+    if ((faceIndex != adjoinFaceIndex) && checkCoplanarity(face, adjoinFace)) {
       /*
       if (!(faceIndex == 20 && adjoinFaceIndex == 17)) {
         console.log('faceIndex:', faceIndex, 'adjoinFaceIndex:', adjoinFaceIndex);
@@ -352,13 +352,22 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
               geometry.vertices.push(newPoint);
               var newPointIndex = geometry.vertices.length - 1;
 
-              if (faceIndex == 12 && adjoinFaceIndex == 17) {
+            if (faceIndex == 12 && adjoinFaceIndex == 17) {
                 debugger;
               }
               if (adjoinFaceIndex == 17) {
                 console.log('Splitting.');
               }
+
               */
+              // 4,8 causes issues
+              if (adjoinFaceIndex == 30) {
+                console.log('face indexes:', faceArray[0], faceArray[1], faceArray[2]);
+                console.log('adjoinFace indexed:', adjoinFaceArray[0], adjoinFaceArray[1], adjoinFaceArray[2]);
+                console.log('face:', vertices[faceArray[0]], vertices[faceArray[1]], vertices[faceArray[2]]);
+                console.log('adjoinFace:', vertices[adjoinFaceArray[0]], vertices[adjoinFaceArray[1]], vertices[adjoinFaceArray[2]]);
+                debugger;
+              }
 
               adjoinFace.a = adjoinFaceArray[i];
               adjoinFace.b = faceArray[j];
@@ -370,6 +379,15 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
               newFace.c = adjoinFaceArray[(i+2) % faceLen];
               geometry.faces.push(newFace);
 
+/*
+              if ((adjoinFace.a == adjoinFace.b) || (adjoinFace.a == adjoinFace.c) || (adjoinFace.b == adjoinFace.c)) {
+                debugger;
+              }
+              if ((newFace.a == newFace.b) || (newFace.a == newFace.c) || (newFace.b == newFace.c)) {
+                debugger;
+              }
+*/
+              
               var newVertexUv = _.clone(geometry.faceVertexUvs[0][adjoinFaceIndex]);
               geometry.faceVertexUvs[0].push(newVertexUv);
 
@@ -1505,8 +1523,12 @@ function updateRoomView() {
   if (rotatingRoom) {
     var cursorXdiff = (cursor.current.x - cursor.last.x);
     var cursorYdiff = (cursor.current.y - cursor.last.y);
+/*
     roomRotateX = Math.min(90 * DEG_TO_RAD, Math.max(0, roomRotateX + cursorYdiff * DEG_TO_RAD));
     roomRotateY = Math.min(90 * DEG_TO_RAD, Math.max(-90 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
+*/
+    roomRotateX = Math.min(90 * DEG_TO_RAD, Math.max(-180, roomRotateX + cursorYdiff * DEG_TO_RAD));
+    roomRotateY = Math.min(90 * DEG_TO_RAD, Math.max(-180 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
     //console.log('roomRotateX:', roomRotateX, 'roomRotateY:', roomRotateY);
   }
   parent.rotation.x = roomRotateX;

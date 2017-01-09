@@ -144,13 +144,16 @@ document.body.addEventListener("mouseenter", handleMouseEnter, false);
 
 
 function handleKeyDown(event) {
-  //console.log('key pressed:', event.keyCode);
+  console.log('key pressed:', event.keyCode);
   switch (event.keyCode) {
     case 18:
       window.optionKeyPressed = true;
       break;
     case 17:
       break; // control key
+    case 65:
+      doAllCorrections();
+      break;
     case 87:
       window.wKeyPressed = true;
       break;
@@ -331,6 +334,8 @@ function splitAdjoiningFace(face, geometry) {
             splitPoint = distToSegmentSquared3d(vertices[faceArray[j]], vertices[adjoinP1], vertices[adjoinP2]);
             if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
               console.log('j=', j, 'We found split point on adjoining face:', adjoinFace, 'adjoinFaceIndex:', adjoinFaceIndex);
+              /* Dont use newPoint. Use faceArray[j] as the index.
+               * Also, make a stack of faces to split so we don't split more than once if we don't have to. */
               var newPoint = new THREE.Vector3(splitPoint.nearestPoint.x, splitPoint.nearestPoint.y, splitPoint.nearestPoint.z);
               geometry.vertices.push(newPoint);
               var newPointIndex = geometry.vertices.length - 1;
@@ -696,11 +701,24 @@ function setupSelectMesh(csgPrimitiveMesh) {
 }
 
 
+function doAllCorrections() {
+  var csgPrimitiveMesh = csgPrimitives.children[0];
+  console.log('Num faces before:', csgPrimitiveMesh.geometry.faces.length, 'Num verts before:', csgPrimitiveMesh.geometry.vertices.length);
+  updateEdgeMaps(csgPrimitiveMesh);
+  console.log('Num faces mid:', csgPrimitiveMesh.geometry.faces.length, 'Num verts mid:', csgPrimitiveMesh.geometry.vertices.length);
+  fillInMissingEdgeMaps();
+  console.log('Num faces after fillin:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after fillin:', csgPrimitiveMesh.geometry.vertices.length);
+  correctDuplicateVertices(csgPrimitiveMesh.geometry);
+  console.log('Num faces after correctDupe:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after correctDupe:', csgPrimitiveMesh.geometry.vertices.length);
+  updateEdgeMaps(csgPrimitiveMesh);
+  console.log('Num faces after all:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after all:', csgPrimitiveMesh.geometry.vertices.length);
+}
+
 // working example: http://jsfiddle.net/L0rdzbej/151/
 function setupCSGModels() {
-  var height = 1;
-  var width = 1;
-  var length = 1;
+  var height = 2;
+  var width = 2;
+  var length = 2;
 
   csgPrimitives = new THREE.Object3D();
   parent.add(csgPrimitives);
@@ -747,23 +765,14 @@ function setupCSGModels() {
     wireframe: true
   } );
 
-  csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
+  csgPrimitiveMesh.material = window.csgPrimitiveMaterialWire;
 
   setupSelectMesh(csgPrimitiveMesh);
   csgPrimitives.add( csgPrimitiveMesh );
 
   correctDuplicateVertices(csgPrimitiveMesh.geometry);
 
-  console.log('Num faces before:', csgPrimitiveMesh.geometry.faces.length, 'Num verts before:', csgPrimitiveMesh.geometry.vertices.length);
-  updateEdgeMaps(csgPrimitiveMesh);
-  console.log('Num faces mid:', csgPrimitiveMesh.geometry.faces.length, 'Num verts mid:', csgPrimitiveMesh.geometry.vertices.length);
-  fillInMissingEdgeMaps();
-  console.log('Num faces after fillin:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after fillin:', csgPrimitiveMesh.geometry.vertices.length);
-  correctDuplicateVertices(csgPrimitiveMesh.geometry);
-  console.log('Num faces after correctDupe:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after correctDupe:', csgPrimitiveMesh.geometry.vertices.length);
-  updateEdgeMaps(csgPrimitiveMesh);
-  console.log('Num faces after all:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after all:', csgPrimitiveMesh.geometry.vertices.length);
-
+  //doAllCorrections();
 
   //var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
   var box2 = new THREE.Mesh( new THREE.BoxGeometry( width, height, length ) );
@@ -1646,7 +1655,7 @@ function render() {
 
   checkWireFrameToggle();
   updateRoomView();
-  displaySelectMesh();
+  //displaySelectMesh();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
@@ -1685,6 +1694,17 @@ camera.position.set( 0,0, 5);
 //controls.update();
 setupLights();
 //setupLabels();
+
+var hackCube = new THREE.BoxGeometry( 1.99, 1.99, 1.99 );
+var hackMaterial = new THREE.MeshBasicMaterial( { 
+  color: 0x111111,
+  side: THREE.DoubleSide, 
+  opacity: 1.0 
+} );
+
+var hackFiller = new THREE.Mesh( hackCube, hackMaterial );
+
+parent.add(hackFiller);
 
 render();
 

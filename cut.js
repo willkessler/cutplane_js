@@ -76,7 +76,7 @@ var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.005;
 var POINT_ON_LINE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
-var COPLANAR_ANGLE_TOLERANCE = 5; // degrees, not radians
+var COPLANAR_ANGLE_TOLERANCE = 1; // degrees, not radians
 
 var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
@@ -754,9 +754,9 @@ function doAllCorrections() {
 
 // working example: http://jsfiddle.net/L0rdzbej/151/
 function setupCSGModels() {
-  var height = 2;
-  var width = 2;
-  var length = 2;
+  var height = 1;
+  var width = 1;
+  var length = 1;
 
   csgPrimitives = new THREE.Object3D();
   parent.add(csgPrimitives);
@@ -766,13 +766,13 @@ function setupCSGModels() {
   // CSG GEOMETRY
   cube_bsp = new ThreeBSP( box );
 
-  var cutgeo = new THREE.SphereGeometry( 0.5,4,4 );
+  var cutgeo = new THREE.SphereGeometry( 0.5,32,32 );
   //var cutgeo = new THREE.CubeGeometry( width / 2, height / 2, length / 2);
 
   // move geometry to where the cut should be
   var matrix = new THREE.Matrix4();
-  //matrix.setPosition( new THREE.Vector3(0.25, 0.25, 0.25) );
-  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) );
+  matrix.setPosition( new THREE.Vector3(0.25, 0.25, 0.25) );
+  //matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) ); // this version , sphere does not intersect with cube
   cutgeo.applyMatrix( matrix );
 
   var sub =  new THREE.Mesh( cutgeo );
@@ -881,6 +881,19 @@ function setupLabels() {
       parent.add( spritey );
     }
   }
+}
+
+function setupHackFiller() {
+  var hackCube = new THREE.BoxGeometry( 1.99, 1.99, 1.99 );
+  var hackMaterial = new THREE.MeshBasicMaterial( { 
+    color: 0x111111,
+    side: THREE.DoubleSide, 
+    opacity: 1.0 
+  } );
+
+  var hackFiller = new THREE.Mesh( hackCube, hackMaterial );
+
+  parent.add(hackFiller);
 }
 
 // --------------------------------------------------------------------------------
@@ -1796,16 +1809,8 @@ camera.position.set( 0,0, 5);
 setupLights();
 //setupLabels();
 
-var hackCube = new THREE.BoxGeometry( 1.99, 1.99, 1.99 );
-var hackMaterial = new THREE.MeshBasicMaterial( { 
-  color: 0x111111,
-  side: THREE.DoubleSide, 
-  opacity: 1.0 
-} );
+//setupHackFiller();
 
-var hackFiller = new THREE.Mesh( hackCube, hackMaterial );
-
-parent.add(hackFiller);
 
 render();
 

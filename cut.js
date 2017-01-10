@@ -1202,6 +1202,8 @@ function findCoplanarAdjacentFaces2(startFaceIndex, geometry) {
   var examFace, examFaceIndex;
   var adjoinFace, adjoinFaceIndex;
   var startFace = geometry.faces[startFaceIndex];
+  var faceLen = 3;
+  var vertices = geometry.vertices;
   examQueue.push(startFaceIndex);
   adjoiningFaces[startFaceIndex] = true; // include the start face
   while (examQueue.length > 0) {
@@ -1209,21 +1211,36 @@ function findCoplanarAdjacentFaces2(startFaceIndex, geometry) {
     // console.log('examQueue:', examQueue.length);
     for (adjoinFaceIndex in geometry.faces) {
       if (!examined.hasOwnProperty(adjoinFaceIndex)) {
-        if (adjoinFaceIndex != examFaceIndex) {
+        if ((adjoinFaceIndex != examFaceIndex) && (!adjoiningFaces.hasOwnProperty(adjoinFaceIndex))) {
           //console.log('adjoinFaceIndex:', adjoinFaceIndex);
           adjoinFace = geometry.faces[adjoinFaceIndex];
           examFace = geometry.faces[examFaceIndex];
           if (checkCoplanarity(examFace, adjoinFace)) {
-            var overlap1 = [examFace.a, examFace.b, examFace.c];
-            var overlap2 = [adjoinFace.a, adjoinFace.b, adjoinFace.c];
+            var overlap1 = [adjoinFace.a, adjoinFace.b, adjoinFace.c];
+            var overlap2 = [examFace.a, examFace.b, examFace.c];
             var vertsInCommon = _.intersection(overlap1, overlap2);
             // Check for vertices in common. If any vertices are in comment, these coplanar faces touch at least one vertex.
             if (vertsInCommon.length > 0) {
-              //console.log('Pushing adjoining face:', adjoinFaceIndex);
+              console.log('Pushing adjoining face due to vertices in common:', adjoinFaceIndex);
               adjoiningFaces[adjoinFaceIndex] = true;
               examQueue.push(adjoinFaceIndex);
             } else {
               // it's possible the adjoining face only touches vertices to the middle of edges, so check for that.
+              edgeIntersectExam:
+              for (var i = 0; i < faceLen; ++i) {
+                adjoinP1 = overlap1[i];
+                adjoinP2 = overlap1[(i + 1) % faceLen];
+                for (var j = 0; j < faceLen; ++j) {
+                  splitPoint = distToSegmentSquared3d(vertices[overlap2[j]], vertices[adjoinP1], vertices[adjoinP2]);
+                  if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
+                    console.log('adding adjoining face due to edge intersection:', adjoinFaceIndex);
+                    console.log('j=', j, 'Source face:', examFaceIndex, examFace, 'We found split point on adjoining face index:', adjoinFaceIndex, adjoinFace);
+                    adjoiningFaces[adjoinFaceIndex] = true;
+                    examQueue.push(adjoinFaceIndex);
+                    break edgeIntersectExam;
+                  }
+                }
+              }              
             }
           }
         }

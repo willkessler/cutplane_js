@@ -36,7 +36,7 @@ var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.005;
 var POINT_ON_LINE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
-var COPLANAR_ANGLE_TOLERANCE = 1; // degrees, not radians
+var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 
 var parent;
 var csgPrimitives;
@@ -45,6 +45,7 @@ var crosshair;
 var primitive;
 var jsmPrimitive;
 var jsmPrimitiveMesh;
+var coplanarGroups;
 
 var csgPrimitiveMesh;
 
@@ -1302,12 +1303,17 @@ function assignFacesToCoplanarGroups(geometry) {
   var coplanarFaces;
   var faces = geometry.faces;
   var intIndex;
+  var coplanarGroupMax;
+  coplanarGroups = [];
   for (var processFaceIndex in faceIndexList) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
       coplanarFaces = findCoplanarAdjacentFaces(processFaceIndex, geometry);
+      coplanarGroups.push(coplanarFaces);
+      coplanarGroupMax = coplanarGroups.length - 1;
       for (var groupedFaceIndex in coplanarFaces) {
-        faces[groupedFaceIndex].color.setHex(0x0000ff);
+        faces[groupedFaceIndex].coplanarGroupIndex = coplanarGroupMax;
+        //faces[groupedFaceIndex].color.setHex(0x0000ff);
         processedFaces[groupedFaceIndex] = true;
       }
     }
@@ -1315,6 +1321,11 @@ function assignFacesToCoplanarGroups(geometry) {
   geometry.colorsNeedUpdate = true;
 }
 
+function docope() {
+  var geometry = csgPrimitives.children[0].geometry;
+  assignFacesToCoplanarGroups(geometry);
+  console.log('done');
+}
 
 function faceInCutplane(face, vertices) {
   return ( (Math.abs(vertices[face[0]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
@@ -1535,8 +1546,9 @@ function applyToCoplanarFaces(face, csgPrimitive, callback) {
   }
   /* Take action on all coplanars */
   for (var actionFace of coplanarFaces) {
-    callback(actionFace);
+    callback(actionFaceIndex);
   }
+  callback(face);
 }
 
 function updatePickSquare() {
@@ -1580,13 +1592,11 @@ function updatePickSquare() {
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.face) {
-      // console.log('near face', highlightCenter.face);
-      /*
-      applyToCoplanarFaces(highlightCenter.face, csgPrimitive, function(face) {
-        face.color.setHex(0xff0000);
-      });
+      var coplanarFaceIndexes = coplanarGroups[highlightCenter.face.coplanarGroupIndex];
+      for (var faceIndex in coplanarFaceIndexes) {
+        csgPrimitive.geometry.faces[faceIndex].color.setHex(0xff0000);
+      }
       csgPrimitive.geometry.colorsNeedUpdate = true;
-      */
 
       activeFaceStr = '';
       for (ff in csgPrimitive.geometry.faces) {

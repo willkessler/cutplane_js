@@ -1208,9 +1208,10 @@ function fillInMissingEdgeMaps() {
   }
 }
 
-// TODO: on each vertex create inFaces hash
-// only use faces on the adjacent vertices rather than looping through all faces to find adjacents
-// create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
+// TODO: 
+// [x] on each vertex create inFaces hash
+// [x] only use faces on the adjacent vertices rather than looping through all faces to find adjacents
+
 
 function assignVertexFaceHashes(geometry) {
   var vertices = geometry.vertices;
@@ -1236,14 +1237,15 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   var examined = {};
   var examFace, examFaceIndex;
   var adjoiningFace, adjoiningFaceIndex;
-  var startFace = geometry.faces[startFaceIndex];
+  var faces = geometry.faces;
   var vertices = geometry.vertices;
+  var startFace = faces[startFaceIndex];
   examQueue.push(startFaceIndex);
   coplanarAdjacentFaces[startFaceIndex] = true; // include the start face
   assignVertexFaceHashes(geometry);
   while (examQueue.length > 0) {
     examFaceIndex = examQueue.pop();
-    examFace = geometry.faces[examFaceIndex];
+    examFace = faces[examFaceIndex];
     // console.log('examQueue:', examQueue.length);
     adjoiningFaceIndexes = [];
     for (var vertIndex of [examFace.a, examFace.b, examFace.c]) {
@@ -1255,14 +1257,14 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
       if (!examined.hasOwnProperty(adjoiningFaceIndex)) {
         if ((adjoiningFaceIndex != examFaceIndex) && (!coplanarAdjacentFaces.hasOwnProperty(adjoiningFaceIndex))) {
           //console.log('adjoiningFaceIndex:', adjoiningFaceIndex);
-          adjoiningFace = geometry.faces[adjoiningFaceIndex];
+          adjoiningFace = faces[adjoiningFaceIndex];
           if (checkCoplanarity(examFace, adjoiningFace)) {
             var overlap1 = [adjoiningFace.a, adjoiningFace.b, adjoiningFace.c];
             var overlap2 = [examFace.a, examFace.b, examFace.c];
             var vertsInCommon = _.intersection(overlap1, overlap2);
             // Check for vertices in common. If any vertices are in comment, these coplanar faces touch at least one vertex.
             if (vertsInCommon.length > 0) {
-              console.log('Pushing adjoining face due to vertices in common:', adjoiningFaceIndex);
+              //console.log('Pushing adjoining face due to vertices in common:', adjoiningFaceIndex);
               coplanarAdjacentFaces[adjoiningFaceIndex] = true;
               examQueue.push(adjoiningFaceIndex);
             } else {
@@ -1290,28 +1292,28 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
     examined[examFaceIndex] = true;
   }
 
-  for (adjoiningFaceIndex in coplanarAdjacentFaces) {
-    geometry.faces[adjoiningFaceIndex].color.setHex(0x0000ff);
-  }
-  geometry.colorsNeedUpdate = true;
-
   return (coplanarAdjacentFaces);
 }
 
-/*
-    for (var edgeMapKey in csgPrimitive.edgeMap) {
-      var edgeMaps = csgPrimitive.edgeMap[edgeMapKey];
-      if (edgeMaps.length < 2) {
-        console.log('Going to fix edgeMap:', edgeMapKey);
-        var soloFace = edgeMaps[0];
-        splitAdjoiningFace(soloFace, geometry);
-        geometry.uvsNeedUpdate = true;
-        geometry.elementsNeedUpdate = true;        
+// create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
+function assignFacesToCoplanarGroups(geometry) {
+  var faceIndexList = _.mapObject(_.keys(geometry.faces), function() { return true; });
+  var processedFaces = {};
+  var coplanarFaces;
+  var faces = geometry.faces;
+  var intIndex;
+  for (var processFaceIndex in faceIndexList) {
+    intIndex = parseInt(processFaceIndex);
+    if (!processedFaces.hasOwnProperty(intIndex)) {
+      coplanarFaces = findCoplanarAdjacentFaces(processFaceIndex, geometry);
+      for (var groupedFaceIndex in coplanarFaces) {
+        faces[groupedFaceIndex].color.setHex(0x0000ff);
+        processedFaces[groupedFaceIndex] = true;
       }
     }
   }
+  geometry.colorsNeedUpdate = true;
 }
-*/
 
 
 function faceInCutplane(face, vertices) {

@@ -29,6 +29,15 @@
 
 // basic threejs tutorial: https://manu.ninja/webgl-3d-model-viewer-using-three-js
 
+var FACELEN = 3;
+var RAD_TO_DEG = 180 / Math.PI;
+var DEG_TO_RAD = Math.PI / 180;
+var FACE_IN_PLANE_TOLERANCE = 0.0001;
+var POINT_ON_POINT_TOLERANCE = 0.005;
+var POINT_ON_LINE_TOLERANCE = 0.001;
+var TO_FIXED_DECIMAL_PLACES = 4;
+var COPLANAR_ANGLE_TOLERANCE = 1; // degrees, not radians
+
 var parent;
 var csgPrimitives;
 var plane;
@@ -70,13 +79,6 @@ var activeFace = -1;
 var activeFaceStr = '';
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
-var RAD_TO_DEG = 180 / Math.PI;
-var DEG_TO_RAD = Math.PI / 180;
-var FACE_IN_PLANE_TOLERANCE = 0.0001;
-var POINT_ON_POINT_TOLERANCE = 0.005;
-var POINT_ON_LINE_TOLERANCE = 0.001;
-var TO_FIXED_DECIMAL_PLACES = 4;
-var COPLANAR_ANGLE_TOLERANCE = 1; // degrees, not radians
 
 var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
@@ -319,7 +321,7 @@ function pointsAreEqual(P0, P1) {
 
 function splitAdjoiningFace(face, faceIndex, geometry) {
   var faceArray, adjoinP1, adjoinP2;
-  var faceLen = 3, splitPoint;
+  var splitPoint;
   var faceArray = [ face.a, face.b, face.c ];
   var vertices = geometry.vertices;
   var adjoinFace;
@@ -335,10 +337,10 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
       }
       */
       adjoinFaceArray = [ adjoinFace.a, adjoinFace.b, adjoinFace.c ];
-      for (var i = 0; i < faceLen; ++i) {
+      for (var i = 0; i < FACELEN; ++i) {
         adjoinP1 = adjoinFaceArray[i];
-        adjoinP2 = adjoinFaceArray[(i + 1) % faceLen];
-        for (var j = 0; j < faceLen; ++j) {
+        adjoinP2 = adjoinFaceArray[(i + 1) % FACELEN];
+        for (var j = 0; j < FACELEN; ++j) {
           if ((faceArray[j] != adjoinP1) && (faceArray[j] != adjoinP2)) {
             splitPoint = distToSegmentSquared3d(vertices[faceArray[j]], vertices[adjoinP1], vertices[adjoinP2]);
             if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
@@ -371,12 +373,12 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
 
               adjoinFace.a = adjoinFaceArray[i];
               adjoinFace.b = faceArray[j];
-              adjoinFace.c = adjoinFaceArray[(i+2) % faceLen];
+              adjoinFace.c = adjoinFaceArray[(i+2) % FACELEN];
 
               var newFace = adjoinFace.clone();
               newFace.a = faceArray[j];
-              newFace.b = adjoinFaceArray[(i+1) % faceLen];
-              newFace.c = adjoinFaceArray[(i+2) % faceLen];
+              newFace.b = adjoinFaceArray[(i+1) % FACELEN];
+              newFace.c = adjoinFaceArray[(i+2) % FACELEN];
               geometry.faces.push(newFace);
 
 /*
@@ -907,12 +909,11 @@ function drawSectionLineRawModel() {
   var P0, P1;
   var cutSection = new THREE.Geometry();
   var sectionExists = false;
-  var face, faceLen;
+  var face;
   var sectionPoints = [];
   for (var i = 0; i < faces.length; ++i) {
     face = faces[i];
-    faceLen = face.length;
-    for (var j = 0; j < faceLen - 1; ++j) {
+    for (var j = 0; j < FACELEN - 1; ++j) {
       P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
       P1 = new THREE.Vector3(vertices[face[j + 1]].x,vertices[face[j + 1]].y,vertices[face[j + 1]].z);
       var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
@@ -924,7 +925,7 @@ function drawSectionLineRawModel() {
         sectionPoints.push(intersection.intersectPoint);
       }
     }
-    P0 = new THREE.Vector3(vertices[face[faceLen - 1]].x,vertices[face[faceLen - 1 ]].y,vertices[face[faceLen - 1]].z);
+    P0 = new THREE.Vector3(vertices[face[FACELEN - 1]].x,vertices[face[FACELEN - 1 ]].y,vertices[face[FACELEN - 1]].z);
     P1 = new THREE.Vector3(vertices[face[0]].x,vertices[face[0]].y,vertices[face[0]].z);
     var intersection = intersectLineWithPlane(P0, P1, plane.position.z);
     if (intersection.intersected) {
@@ -961,7 +962,7 @@ function drawSectionLineRawModel() {
 function drawSectionLineJSM() {
   var P0, P1;
   var sectionExists = false;
-  var face, faceLen;
+  var face;
   var vertices = jsmPrimitive.vertices;
   var sectionEdges = {};
   var sectionEdgesCount = 0;
@@ -973,13 +974,12 @@ function drawSectionLineJSM() {
 
   for (var i = 0; i < jsmPrimitive.polygons.length; ++i) {
     face = jsmPrimitive.polygons[i].vertices;
-    faceLen = face.length;
     intersections = [];
     /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
-    for (var j = 0; j < faceLen; ++j) {
+    for (var j = 0; j < FACELEN; ++j) {
       //console.log('i:',i,'j:',j);
       P0 = new THREE.Vector3(vertices[face[j]].position.x,vertices[face[j]].position.y,vertices[face[j]].position.z);
-      P1 = new THREE.Vector3(vertices[face[(j + 1) % faceLen]].position.x,vertices[face[(j + 1) % faceLen]].position.y,vertices[face[(j + 1) % faceLen]].position.z);
+      P1 = new THREE.Vector3(vertices[face[(j + 1) % FACELEN]].position.x,vertices[face[(j + 1) % FACELEN]].position.y,vertices[face[(j + 1) % FACELEN]].position.z);
       intersection = intersectLineWithPlane(P0, P1, plane.position.z);
       if (intersection.intersected) {
         intersections.push(intersection);
@@ -1208,48 +1208,76 @@ function fillInMissingEdgeMaps() {
   }
 }
 
-function findCoplanarAdjacentFaces2(startFaceIndex, geometry) {
-  var adjoiningFaces = {};
+// TODO: on each vertex create inFaces hash
+// only use faces on the adjacent vertices rather than looping through all faces to find adjacents
+// create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
+
+function assignVertexFaceHashes(geometry) {
+  var vertices = geometry.vertices;
+  var faces = geometry.faces, face;
+  var theVertex;
+  for (var faceIndex in faces) {
+    face = geometry.faces[faceIndex];
+    for (var vertIndex of [face.a, face.b, face.c]) {
+      theVertex = vertices[vertIndex];
+      if (!theVertex.hasOwnProperty('inFaces')) {
+        theVertex.inFaces = {};
+      }
+      theVertex.inFaces[faceIndex] = true;
+    }
+  }
+}
+
+
+function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
+  var adjoiningFaceIndexes;
+  var coplanarAdjacentFaces = {};
   var examQueue = [];
   var examined = {};
   var examFace, examFaceIndex;
-  var adjoinFace, adjoinFaceIndex;
+  var adjoiningFace, adjoiningFaceIndex;
   var startFace = geometry.faces[startFaceIndex];
-  var faceLen = 3;
   var vertices = geometry.vertices;
   examQueue.push(startFaceIndex);
-  adjoiningFaces[startFaceIndex] = true; // include the start face
+  coplanarAdjacentFaces[startFaceIndex] = true; // include the start face
+  assignVertexFaceHashes(geometry);
   while (examQueue.length > 0) {
     examFaceIndex = examQueue.pop();
+    examFace = geometry.faces[examFaceIndex];
     // console.log('examQueue:', examQueue.length);
-    for (adjoinFaceIndex in geometry.faces) {
-      if (!examined.hasOwnProperty(adjoinFaceIndex)) {
-        if ((adjoinFaceIndex != examFaceIndex) && (!adjoiningFaces.hasOwnProperty(adjoinFaceIndex))) {
-          //console.log('adjoinFaceIndex:', adjoinFaceIndex);
-          adjoinFace = geometry.faces[adjoinFaceIndex];
-          examFace = geometry.faces[examFaceIndex];
-          if (checkCoplanarity(examFace, adjoinFace)) {
-            var overlap1 = [adjoinFace.a, adjoinFace.b, adjoinFace.c];
+    adjoiningFaceIndexes = [];
+    for (var vertIndex of [examFace.a, examFace.b, examFace.c]) {
+      adjoiningFaceIndexes = _.union(adjoiningFaceIndexes, _.map(_.keys(vertices[vertIndex].inFaces), function(c) { return parseInt(c); }));
+    }
+    //console.log('adjoiningFaceIndexes:', adjoiningFaceIndexes);
+    for (adjoiningFaceIndex of adjoiningFaceIndexes) {
+      //console.log('Examining adjoining face index:', adjoiningFaceIndex);
+      if (!examined.hasOwnProperty(adjoiningFaceIndex)) {
+        if ((adjoiningFaceIndex != examFaceIndex) && (!coplanarAdjacentFaces.hasOwnProperty(adjoiningFaceIndex))) {
+          //console.log('adjoiningFaceIndex:', adjoiningFaceIndex);
+          adjoiningFace = geometry.faces[adjoiningFaceIndex];
+          if (checkCoplanarity(examFace, adjoiningFace)) {
+            var overlap1 = [adjoiningFace.a, adjoiningFace.b, adjoiningFace.c];
             var overlap2 = [examFace.a, examFace.b, examFace.c];
             var vertsInCommon = _.intersection(overlap1, overlap2);
             // Check for vertices in common. If any vertices are in comment, these coplanar faces touch at least one vertex.
             if (vertsInCommon.length > 0) {
-              console.log('Pushing adjoining face due to vertices in common:', adjoinFaceIndex);
-              adjoiningFaces[adjoinFaceIndex] = true;
-              examQueue.push(adjoinFaceIndex);
+              console.log('Pushing adjoining face due to vertices in common:', adjoiningFaceIndex);
+              coplanarAdjacentFaces[adjoiningFaceIndex] = true;
+              examQueue.push(adjoiningFaceIndex);
             } else {
               // it's possible the adjoining face only touches vertices to the middle of edges, so check for that.
               edgeIntersectExam:
-              for (var i = 0; i < faceLen; ++i) {
+              for (var i = 0; i < FACELEN; ++i) {
                 adjoinP1 = overlap1[i];
-                adjoinP2 = overlap1[(i + 1) % faceLen];
-                for (var j = 0; j < faceLen; ++j) {
+                adjoinP2 = overlap1[(i + 1) % FACELEN];
+                for (var j = 0; j < FACELEN; ++j) {
                   splitPoint = distToSegmentSquared3d(vertices[overlap2[j]], vertices[adjoinP1], vertices[adjoinP2]);
                   if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
-                    console.log('adding adjoining face due to edge intersection:', adjoinFaceIndex);
-                    console.log('j=', j, 'Source face:', examFaceIndex, examFace, 'We found split point on adjoining face index:', adjoinFaceIndex, adjoinFace);
-                    adjoiningFaces[adjoinFaceIndex] = true;
-                    examQueue.push(adjoinFaceIndex);
+                    console.log('adding adjoining face due to edge intersection:', adjoiningFaceIndex);
+                    console.log('j=', j, 'Source face:', examFaceIndex, examFace, 'We found split point on adjoining face index:', adjoiningFaceIndex, adjoiningFace);
+                    coplanarAdjacentFaces[adjoiningFaceIndex] = true;
+                    examQueue.push(adjoiningFaceIndex);
                     break edgeIntersectExam;
                   }
                 }
@@ -1261,11 +1289,13 @@ function findCoplanarAdjacentFaces2(startFaceIndex, geometry) {
     }
     examined[examFaceIndex] = true;
   }
-  for (var adjoinFaceIndex in adjoiningFaces) {
-    geometry.faces[adjoinFaceIndex].color.setHex(0x0000ff);
+
+  for (adjoiningFaceIndex in coplanarAdjacentFaces) {
+    geometry.faces[adjoiningFaceIndex].color.setHex(0x0000ff);
   }
   geometry.colorsNeedUpdate = true;
 
+  return (coplanarAdjacentFaces);
 }
 
 /*
@@ -1295,7 +1325,7 @@ function faceInCutplane(face, vertices) {
 function drawSectionLineThreeMesh() {
   var P0, P1;
   var sectionExists;
-  var face, faceLen;
+  var face;
   var sectionEdges;
   var sectionEdgesCount = 0;
   var iKey1, iKey2, finalIKey, intersection, intersections;
@@ -1328,13 +1358,12 @@ function drawSectionLineThreeMesh() {
         if (facesChecked == 9) {
           //debugger;
         }
-        faceLen = 3;
         intersections = [];
         /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
-        for (var j = 0; j < faceLen; ++j) {
+        for (var j = 0; j < FACELEN; ++j) {
           //console.log('i:',i,'j:',j);
           P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
-          P1 = new THREE.Vector3(vertices[face[(j + 1) % faceLen]].x,vertices[face[(j + 1) % faceLen]].y,vertices[face[(j + 1) % faceLen]].z);
+          P1 = new THREE.Vector3(vertices[face[(j + 1) % FACELEN]].x,vertices[face[(j + 1) % FACELEN]].y,vertices[face[(j + 1) % FACELEN]].z);
           intersection = intersectLineWithPlane(P0, P1, plane.position.z);
           if (intersection.intersected) {
             intersections.push(intersection);
@@ -1476,7 +1505,7 @@ function findAdjacentFaces(v1, v2, csgPrimitive) {
   return ({ face1: f1, face2: f2 });
 }
 
-function findCoplanarAdjacentFaces(v1, v2, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive) {
+function findCoplanarAdjacentFacesOrig(v1, v2, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive) {
   var adjacentFaces = findAdjacentFaces(v1, v2, csgPrimitive);
   if ((adjacentFaces.face1.examTime < examTime) && checkCoplanarity(evalFace,adjacentFaces.face1)) {
     evalStack.push(adjacentFaces.face1);
@@ -1498,9 +1527,9 @@ function applyToCoplanarFaces(face, csgPrimitive, callback) {
   evalStack.push(face);
   while (evalStack.length > 0) {
     evalFace = evalStack.pop();
-    findCoplanarAdjacentFaces(evalFace.a, evalFace.b, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
-    findCoplanarAdjacentFaces(evalFace.b, evalFace.c, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
-    findCoplanarAdjacentFaces(evalFace.c, evalFace.a, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
+    findCoplanarAdjacentFacesOrig(evalFace.a, evalFace.b, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
+    findCoplanarAdjacentFacesOrig(evalFace.b, evalFace.c, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
+    findCoplanarAdjacentFacesOrig(evalFace.c, evalFace.a, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
   }
   /* Take action on all coplanars */
   for (var actionFace of coplanarFaces) {

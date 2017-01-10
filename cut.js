@@ -803,7 +803,8 @@ function setupCSGModels() {
     wireframe: true
   } );
 
-  csgPrimitiveMesh.material = window.csgPrimitiveMaterialWire;
+  // csgPrimitiveMesh.material = window.csgPrimitiveMaterialWire;
+  csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
 
   setupSelectMesh(csgPrimitiveMesh);
   csgPrimitives.add( csgPrimitiveMesh );
@@ -1192,6 +1193,49 @@ function fillInMissingEdgeMaps() {
     geometry.uvsNeedUpdate = true;
     geometry.elementsNeedUpdate = true;        
   }
+}
+
+function findCoplanarAdjacentFaces2(startFaceIndex, geometry) {
+  var adjoiningFaces = {};
+  var examQueue = [];
+  var examined = {};
+  var examFace, examFaceIndex;
+  var adjoinFace, adjoinFaceIndex;
+  var startFace = geometry.faces[startFaceIndex];
+  examQueue.push(startFaceIndex);
+  adjoiningFaces[startFaceIndex] = true; // include the start face
+  while (examQueue.length > 0) {
+    examFaceIndex = examQueue.pop();
+    // console.log('examQueue:', examQueue.length);
+    for (adjoinFaceIndex in geometry.faces) {
+      if (!examined.hasOwnProperty(adjoinFaceIndex)) {
+        if (adjoinFaceIndex != examFaceIndex) {
+          //console.log('adjoinFaceIndex:', adjoinFaceIndex);
+          adjoinFace = geometry.faces[adjoinFaceIndex];
+          examFace = geometry.faces[examFaceIndex];
+          if (checkCoplanarity(examFace, adjoinFace)) {
+            var overlap1 = [examFace.a, examFace.b, examFace.c];
+            var overlap2 = [adjoinFace.a, adjoinFace.b, adjoinFace.c];
+            var vertsInCommon = _.intersection(overlap1, overlap2);
+            // Check for vertices in common. If any vertices are in comment, these coplanar faces touch at least one vertex.
+            if (vertsInCommon.length > 0) {
+              //console.log('Pushing adjoining face:', adjoinFaceIndex);
+              adjoiningFaces[adjoinFaceIndex] = true;
+              examQueue.push(adjoinFaceIndex);
+            } else {
+              // it's possible the adjoining face only touches vertices to the middle of edges, so check for that.
+            }
+          }
+        }
+      }
+    }
+    examined[examFaceIndex] = true;
+  }
+  for (var adjoinFaceIndex in adjoiningFaces) {
+    geometry.faces[adjoinFaceIndex].color.setHex(0x0000ff);
+  }
+  geometry.colorsNeedUpdate = true;
+
 }
 
 /*

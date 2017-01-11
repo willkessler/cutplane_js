@@ -11,16 +11,17 @@
 //  [X] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [X] Support multiple objects
 //  [X] Tie cutSections back to model somehow, or use jsm's viewer instead
+//  [X] When plane moved and room rotated, use projection vector to calculate how much to move plane, see
+//      https://en.wikipedia.org/wiki/Vector_projection
+//      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
 //  [ ] Put coplanarGroups onto the meshes directly
 //  [ ] Proper support of dragging of multiple objects
 //  [ ] Use geometry.dynamic = true and geometry.verticesNeedUpdate=true to allow edge and vertex dragging
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
-//  [ ] when plane moved and room rotated, use projection vector to calculate how much to move plane, see
-//      https://en.wikipedia.org/wiki/Vector_projection
-//      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
 //  
 //  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
-//  [ ] restore booleans cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
+//  [ ] load/save models to cloud
+//  [ ] restore booleans manipulations within the UI cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
 //  [ ] restore snapping of faces to other faces
 //  [ ] restore the tool chests
 //  [ ] investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
@@ -47,7 +48,8 @@ var primitive;
 var jsmPrimitive;
 var jsmPrimitiveMesh;
 var coplanarGroups;
-var cutplaneVector2d;
+var cutplaneVectorScreenSpace;
+var cutplaneVector2dStr;
 
 var csgPrimitiveMesh;
 
@@ -1634,6 +1636,19 @@ function updatePickSquare() {
 }
 
 
+function updateCutplaneProjectionVector() {
+  var cutplaneNormal = new THREE.Vector3(0,0,1);
+  cutplaneNormal.applyAxisAngle(new THREE.Vector3(1,0,0), roomRotateX);
+  cutplaneNormal.applyAxisAngle(new THREE.Vector3(0,1,0), roomRotateY);
+  var cutplaneNormal2D_1 = project3DVectorIntoScreenSpace(0,0,0, camera, window.innerWidth, window.innerHeight);
+  var cutplaneNormal2D_2 = project3DVectorIntoScreenSpace(cutplaneNormal.x, cutplaneNormal.y, cutplaneNormal.z, camera, window.innerWidth, window.innerHeight);
+  cutplaneVectorScreenSpace = new THREE.Vector2(cutplaneNormal2D_2.x - cutplaneNormal2D_1.x, 
+                                                cutplaneNormal2D_2.y - cutplaneNormal2D_1.y );
+  cutplaneVectorScreenSpace.normalize();
+  cutplaneVector2dStr = '[' + cutplaneNormal.x + ',' + cutplaneNormal.y + ',' + cutplaneNormal.z + ' : ' + 
+                        cutplaneVectorScreenSpace.x + ',' + cutplaneVectorScreenSpace.y + ']';
+}
+
 function updateRoomView() {
   if (wasRotatingRoom != rotatingRoom) {
     if (wasRotatingRoom) {
@@ -1662,16 +1677,8 @@ function updateRoomView() {
   parent.rotation.x = roomRotateX;
   parent.rotation.y = roomRotateY;
 
-  var cutplaneNormal = new THREE.Vector3(0,0,1);
-  cutplaneNormal.applyAxisAngle(new THREE.Vector3(1,0,0), roomRotateX);
-  cutplaneNormal.applyAxisAngle(new THREE.Vector3(0,1,0), roomRotateY);
-  var cutplaneNormal2D_1 = project3DVectorIntoScreenSpace(0,0,0, camera, window.innerWidth, window.innerHeight);
-  var cutplaneNormal2D_2 = project3DVectorIntoScreenSpace(cutplaneNormal.x, cutplaneNormal.y, cutplaneNormal.z, camera, window.innerWidth, window.innerHeight);
-  var cutplaneVectorScreen = new THREE.Vector2(cutplaneNormal2D_2.x - cutplaneNormal2D_1.x, 
-                                               cutplaneNormal2D_2.y - cutplaneNormal2D_1.y );
-  cutplaneVectorScreen.normalize();
-  cutplaneVector2d = '[' + cutplaneNormal.x + ',' + cutplaneNormal.y + ',' + cutplaneNormal.z + ' : ' + 
-                     cutplaneVectorScreen.x + ',' + cutplaneVectorScreen.y + ']';
+  updateCutplaneProjectionVector();
+  
 }
 
 // http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
@@ -1706,7 +1713,7 @@ function updateCrosshair() {
 
   debugText(['Crosshair set.', 
              'activeFace:',  activeFaceStr,
-             'cplaneVec2d:', cutplaneVector2d,
+             'cplaneVec2d:', cutplaneVector2dStr,
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
              'X:',       crosshair.position.x, 
@@ -1745,16 +1752,30 @@ function updateCrosshair2() {
 
 }
 
+function projectOntoVector2d(v1, v2) {
+  var dotProd = v1.dot(v2);
+  var v2LenSquared = sqr(v2.length());
+  var scalar = dotProd * v2LenSquared;
+  var projection = v2.clone();
+  projection.multiplyScalar(scalar);
+  return(projection);
+}
+
 function updateCutplane() {
   if (movingCutplane) {
-    var cursorXdiff = (cursor.current.x - cursor.last.x) * .01;
-    if (parent.rotation.y * RAD_TO_DEG < 0) {
-      cursorXdiff = -1 * cursorXdiff;
-    }
-    //console.log('cursorXdiff is:', cursorXdiff, cursor.current.x,cursor.last.x );
-    if( Math.abs(cursorXdiff) > 0 ){
+    var cursorDiff = new THREE.Vector2(
+      (cursor.current.x - cursor.last.x) * .01,
+      (cursor.current.y - cursor.last.y) * .01
+    );
+    var projectedVector = projectOntoVector2d(cursorDiff, cutplaneVectorScreenSpace);
+    var projectedVectorNormalized = projectedVector.clone();
+    projectedVectorNormalized.normalize();
+    var dotProd = projectedVectorNormalized.dot(cutplaneVectorScreenSpace);
+    var planeDiff = projectedVector.length() * dotProd;  // if we are moving the same direction as cutplaneVectorScreenSpace, dotProd will be 1, otherwise, dotProd will be -1.
+
+    if( Math.abs(planeDiff) > 0 ){
       var prevPlaneZ = plane.position.z;
-      plane.position.z = Math.max(-1, Math.min(plane.position.z + cursorXdiff, 1.0));
+      plane.position.z = Math.max(-1, Math.min(plane.position.z + planeDiff, 1.0));
 
       if ((selectMeshDisplayed != undefined) && mouseDown) {
         var zDiff = plane.position.z - prevPlaneZ;
@@ -1834,7 +1855,7 @@ function render() {
 
   checkWireFrameToggle();
   updateRoomView();
-  //displaySelectMesh();
+  displaySelectMesh();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
@@ -1866,6 +1887,7 @@ setupCSGModels();
 setupHelp();
 setupCutplane();
 setupRoom();
+updateCutplaneProjectionVector();
 setupCrosshair();
 setupPickSquare();
 

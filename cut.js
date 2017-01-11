@@ -9,16 +9,24 @@
 //  [X] make cursor look more like the old cursor
 //  [X] Use cutSections to determine what is near the cursor instead of sectionPoints
 //  [X] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
+//  [X]  Fix fillInOneEdgeMap so that edges are only stored once
+//  [N]  Compute section line from edge maps.  WONT_DO
+//  [X]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
 //  [X] Support multiple objects
 //  [X] Tie cutSections back to model somehow, or use jsm's viewer instead
 //  [X] When plane moved and room rotated, use projection vector to calculate how much to move plane, see
 //      https://en.wikipedia.org/wiki/Vector_projection
 //      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
-//  [ ] Put coplanarGroups onto the meshes directly
+//  [X] create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
+//  [X]  Fix tolerance inconsistencies in csg models.
+// [ ]  Fix picking and dragging code to be more flexible
+// [ ]  Separately compute faces that are in the plane and highlight them differently
+
 //  [ ] Proper support of dragging of multiple objects
 //  [ ] Use geometry.dynamic = true and geometry.verticesNeedUpdate=true to allow edge and vertex dragging
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  
+//  [ ] Fix section line bug where sometimes it will jump over the surface
 //  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] load/save models to cloud
 //  [ ] restore booleans manipulations within the UI cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
@@ -47,7 +55,6 @@ var crosshair;
 var primitive;
 var jsmPrimitive;
 var jsmPrimitiveMesh;
-var coplanarGroups;
 var cutplaneVectorScreenSpace;
 var cutplaneVector2dStr;
 
@@ -60,9 +67,11 @@ var pickSquare;
 var selectMeshMaterialUnselected;
 var selectMeshMaterialSelected;
 
-var selectMeshDisplayed = undefined;
-var csgPrimitiveSelected = undefined;
+var selectableItem = { type: 'none' };
+var pickedItems = [];
 
+
+var pickedList = [];
 var dragging = false;
 var movingCutplane = false;
 var startCursorPauseTime;
@@ -75,9 +84,7 @@ var rotatingRoom = true;
 var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
-var objectSelectable = false;
 var firstRender = true;
-var mouseDown = false;
 
 var allLabels = [];
 var activeFace = -1;
@@ -105,17 +112,11 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 
 
 document.onmousedown = function(e) {
-  mouseDown = true;
-  if (selectMeshDisplayed != undefined) {
-    selectMeshDisplayed.material = selectMeshMaterialSelected;
-  }
+  updatePickedItems(true);
 }
 
 document.onmouseup = function(e) {
-  mouseDown = false;
-  if (selectMeshDisplayed != undefined) {
-    selectMeshDisplayed.material = selectMeshMaterialUnselected;
-  }
+  updatePickedItems(false);
 }
 
 document.onmousemove = function(e){
@@ -842,17 +843,14 @@ function setupCSGModels() {
 
   //doAllCorrections();
 
-  //var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length/2 ) );
-  var box2 = new THREE.Mesh( new THREE.BoxGeometry( width, height, length ) );
+  var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length ) );
   box2.geometry.translate(-0.75,-0.25,-0.75);
   box2.material = window.csgPrimitiveMaterialFlat;
+  csgPrimitives.add(box2);  
 
   setupSelectMesh(box2);
   assignFacesToAllCoplanarGroups();
 
-  //updateEdgeMaps(box2);
-
-  //csgPrimitives.add(box2);  
 
   /* Hack */
   // cf http://stackoverflow.com/questions/15384078/updating-a-geometry-inside-a-mesh-does-nothing
@@ -930,6 +928,22 @@ function setupHackFiller() {
 // Main interaction functions
 // --------------------------------------------------------------------------------
 
+
+function updatePickedItems(mouseDown) {
+  if (mouseDown) {
+    pickedItems = [];
+    if (selectableItem.type == 'mesh') {
+      selectableItem.selectMesh.material = selectMeshMaterialSelected;
+      pickedItems = [ selectableItem ];
+      dragging = true;
+    }
+  } else {
+    dragging = false;
+    if (selectableItem.type == 'mesh') {
+      selectableItem.selectMesh.material = selectMeshMaterialUnselected;
+    }
+  }    
+}
 
 // http://geomalgorithms.com/a05-_intersect-1.html
 /* This routine tries to create a simple section line on convex objects defined in setupPrimitive() above */
@@ -1107,13 +1121,6 @@ function drawSectionLineJSM() {
   }
 }
 
-// TODO: 
-// [X]  Fix fillInOneEdgeMap so that edges are only stored once
-// [N]  Compute section line from edge maps.  WONT_DO
-// [X]  When you hover over section line, highlight faces that are adjacent or console log them so we can see if we get them all. 
-// [ ]  Fix tolerance inconsistencies in csg models.
-// [ ]  Fix picking and dragging code to be more flexible
-// [ ]  Separately compute faces that are in the plane and highlight them differently
 
 function findDuplicateVertices(vertices) {
   var vertexMapRaw = [];
@@ -1323,7 +1330,6 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   return (coplanarAdjacentFaces);
 }
 
-// [x] create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
 function assignFacesToCoplanarGroups(csgPrimitive) {
   var geometry = csgPrimitive.geometry;
   var faceIndexList = _.mapObject(_.keys(geometry.faces), function() { return true; });
@@ -1567,28 +1573,11 @@ function findCoplanarAdjacentFacesOrig(v1, v2, evalFace, evalStack, coplanarFace
 }
 
 
-function applyToCoplanarFaces(face, csgPrimitive, callback) {
-  var evalStack = [], coplanarFaces = [], evalFace;
-  var now = new Date();
-  var examTime = now.getTime();
-  evalStack.push(face);
-  while (evalStack.length > 0) {
-    evalFace = evalStack.pop();
-    findCoplanarAdjacentFacesOrig(evalFace.a, evalFace.b, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
-    findCoplanarAdjacentFacesOrig(evalFace.b, evalFace.c, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
-    findCoplanarAdjacentFacesOrig(evalFace.c, evalFace.a, evalFace, evalStack, coplanarFaces, examTime, csgPrimitive);
-  }
-  /* Take action on all coplanars */
-  for (var actionFace of coplanarFaces) {
-    callback(actionFaceIndex);
-  }
-  callback(face);
-}
-
 function updatePickSquare() {
   //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
+  highlightLoop:
   for (var csgPrimitive of csgPrimitives.children) {
     for (var sectionEdge in csgPrimitive.sectionEdges) {
       coordsArray = [];
@@ -1639,6 +1628,7 @@ function updatePickSquare() {
           activeFaceStr = 'ID:' + ff + ' V:[' + highlightCenter.face.a + ',' + highlightCenter.face.b + ',' + highlightCenter.face.c + ']';
           break;
         }
+        break highlightLoop; // we found a face to highlight, stop here.
       }
       /*
       if (ff) {
@@ -1720,12 +1710,12 @@ function updateCrosshair() {
     var prevCrossHair = { x: crosshair.position.x, y: crosshair.position.y };
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
-    dragging = false;
-    if ((selectMeshDisplayed != undefined) && mouseDown) {
+    if (pickedItems.length && dragging) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
-      selectMeshDisplayed.geometry.translate(xDiff, yDiff, 0.0);
-      dragging = true;
+      for (var pickedItem of pickedItems) {
+        pickedItem.item.geometry.translate(xDiff, yDiff, 0.0);
+      }
       // console.log('Translating object by:', xDiff, yDiff);
     }
   }
@@ -1744,14 +1734,14 @@ function updateCrosshair() {
   ]);
   */
 
-  // canonical, basic mapping    
-  // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
-  // crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
-
 }
 
-// DEFUNCT
-/* Version that moves by deltas. This doesn't work at all because you cant "pick up the mouse" with a trackpad. */
+// DEFUNCT:
+// Version that moves by deltas. This doesn't work at all because you cant "pick up the mouse" with a trackpad.
+// canonical, basic mapping:
+// crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
+// crosshair.position.y = (-2.0 * (cursor.current.y / window.innerHeight)) + 1.0;
+
 function updateCrosshair2() {
   if (!movingCutplane && !rotatingRoom) {
     var offsetX = ((cursor.current.x - cursor.last.x) / window.innerWidth) * 2.0;
@@ -1787,9 +1777,11 @@ function updateCutplane() {
       var prevPlaneZ = plane.position.z;
       plane.position.z = Math.max(-1, Math.min(plane.position.z + planeDiff, 1.0));
 
-      if ((selectMeshDisplayed != undefined) && mouseDown) {
+      if (dragging) {
         var zDiff = plane.position.z - prevPlaneZ;
-        csgPrimitiveSelected.geometry.translate(0,0,zDiff);
+        for (var pickedItem of pickedItems) {
+          pickedItem.item.geometry.translate(0,0, zDiff);
+        }
         // console.log('Translating object in Z by:', zDiff);
       }
 
@@ -1803,28 +1795,33 @@ function updateCursorTracking() {
   cursor.last.y = cursor.current.y;
 }
 
-function displaySelectMesh() {
+function displaySelectableItem() {
   var selectMesh;
-  selectMeshDisplayed = undefined;
   csgPrimitiveSelected = undefined;
 
-  // First clear any previously displayed select meshes
-  for (var csgPrimitive of csgPrimitives.children) {
-      selectMesh = csgPrimitive.selectMesh;
+  // First move away any previously displayed selectable highlight
+  if (selectableItem) {
+    if (selectableItem.type == 'mesh') {
+      selectMesh = selectableItem.selectMesh;
       selectMesh.position.x = 10000;
+    }
+    selectableItem = { type: 'none' };
   }
 
   if (cutSections && cutSections.children && cutSections.children.length > 0) {
     var cutSection, csgPrimitive;
     for (var cutSection of cutSections.children) {
       csgPrimitive = cutSection.csgPrimitive;
-      selectMesh = csgPrimitive.selectMesh;
+
       if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
         // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
         // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
-        selectMeshDisplayed = selectMesh;
-        csgPrimitiveSelected = csgPrimitive;
-        selectMesh.position.x = 0;
+        selectableItem = { 
+          type:'mesh', 
+          item: csgPrimitive,
+          selectMesh: csgPrimitive.selectMesh          
+        };
+        selectableItem.selectMesh.position.x = 0;
         break;
       }
     }
@@ -1865,7 +1862,7 @@ function render() {
 
   checkWireFrameToggle();
   updateRoomView();
-  displaySelectMesh();
+  displaySelectableItem();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();

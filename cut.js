@@ -31,7 +31,7 @@
 
 // basic threejs tutorial: https://manu.ninja/webgl-3d-model-viewer-using-three-js
 
-var FACELEN = 3;
+var FACELEN = 3; // triangles by default in meshes
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
@@ -334,6 +334,17 @@ function project3DVectorIntoScreenSpace(x, y, z, camera, width, height) {
 
   return vector;
 }
+
+// https://www.gamedev.net/topic/556821-check-if-vectors-are-parallel-and-pointing-in-the-same-direction-with-tolerance/, second response useful
+function projectOntoVector2d(v1, v2) {
+  var dotProd = v1.dot(v2);
+  var v2LenSquared = sqr(v2.length());
+  var scalar = dotProd * v2LenSquared;
+  var projection = v2.clone();
+  projection.multiplyScalar(scalar);
+  return(projection);
+}
+
 
 function splitAdjoiningFace(face, faceIndex, geometry) {
   var faceArray, adjoinP1, adjoinP2;
@@ -837,6 +848,7 @@ function setupCSGModels() {
   box2.material = window.csgPrimitiveMaterialFlat;
 
   setupSelectMesh(box2);
+  assignFacesToAllCoplanarGroups();
 
   //updateEdgeMaps(box2);
 
@@ -1312,14 +1324,15 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
 }
 
 // [x] create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
-function assignFacesToCoplanarGroups(geometry) {
+function assignFacesToCoplanarGroups(csgPrimitive) {
+  var geometry = csgPrimitive.geometry;
   var faceIndexList = _.mapObject(_.keys(geometry.faces), function() { return true; });
   var processedFaces = {};
   var coplanarFaces;
   var faces = geometry.faces;
   var intIndex;
   var coplanarGroupMax;
-  coplanarGroups = [];
+  var coplanarGroups = [];
   for (var processFaceIndex in faceIndexList) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
@@ -1333,13 +1346,19 @@ function assignFacesToCoplanarGroups(geometry) {
       }
     }
   }
+  geometry.coplanarGroups = coplanarGroups;
   geometry.colorsNeedUpdate = true;
 }
 
-function docope() {
-  var geometry = csgPrimitives.children[0].geometry;
-  assignFacesToCoplanarGroups(geometry);
-  console.log('done');
+function assignFacesToAllCoplanarGroups() {
+  var now = new Date();
+  var startTime = now.getTime();
+  for (var csgPrimitive of csgPrimitives.children) {
+    assignFacesToCoplanarGroups(csgPrimitive);
+  }
+  var later = new Date();
+  var duration = later.getTime() - startTime;
+  console.log('Done assigning faces to coplanar groups in:', duration, 'ms');
 }
 
 function faceInCutplane(face, vertices) {
@@ -1517,7 +1536,7 @@ function drawSectionLineThreeMesh() {
 // --------------------------------------------------------------------------------
 
 function checkCoplanarity(f1, f2) {
-  return (f1.normal.angleTo(f2.normal) * (180/Math.PI) <= COPLANAR_ANGLE_TOLERANCE);
+  return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
 function findAdjacentFaces(v1, v2, csgPrimitive) {
@@ -1607,7 +1626,7 @@ function updatePickSquare() {
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.face) {
-      var coplanarFaceIndexes = coplanarGroups[highlightCenter.face.coplanarGroupIndex];
+      var coplanarFaceIndexes = csgPrimitive.geometry.coplanarGroups[highlightCenter.face.coplanarGroupIndex];
       for (var faceIndex in coplanarFaceIndexes) {
         csgPrimitive.geometry.faces[faceIndex].color.setHex(0xff0000);
       }
@@ -1711,9 +1730,8 @@ function updateCrosshair() {
     }
   }
 
-  debugText(['Crosshair set.', 
-             'activeFace:',  activeFaceStr,
-             'cplaneVec2d:', cutplaneVector2dStr,
+  debugText(['activeFace:',  activeFaceStr]);
+/*
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
              'X:',       crosshair.position.x, 
@@ -1724,6 +1742,7 @@ function updateCrosshair() {
              'cursorAdjust.X:', cursorAdjust.x,
              'cursorAdjust.Y:', cursorAdjust.y
   ]);
+  */
 
   // canonical, basic mapping    
   // crosshair.position.x = ( 2.0 * (cursor.current.x / window.innerWidth))  - 1.0;
@@ -1750,15 +1769,6 @@ function updateCrosshair2() {
              'rotY:', roomRotateY
   ]);
 
-}
-
-function projectOntoVector2d(v1, v2) {
-  var dotProd = v1.dot(v2);
-  var v2LenSquared = sqr(v2.length());
-  var scalar = dotProd * v2LenSquared;
-  var projection = v2.clone();
-  projection.multiplyScalar(scalar);
-  return(projection);
 }
 
 function updateCutplane() {

@@ -11,6 +11,7 @@
 //  [X] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [X] Support multiple objects
 //  [X] Tie cutSections back to model somehow, or use jsm's viewer instead
+//  [ ] Put coplanarGroups onto the meshes directly
 //  [ ] Proper support of dragging of multiple objects
 //  [ ] Use geometry.dynamic = true and geometry.verticesNeedUpdate=true to allow edge and vertex dragging
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
@@ -46,6 +47,7 @@ var primitive;
 var jsmPrimitive;
 var jsmPrimitiveMesh;
 var coplanarGroups;
+var cutplaneVector2d;
 
 var csgPrimitiveMesh;
 
@@ -318,6 +320,17 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 
 function pointsAreEqual(P0, P1) {
   return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
+}
+
+/* From: http://stackoverflow.com/questions/27409074/converting-3d-position-to-2d-screen-position-r69, answer 3 */
+function project3DVectorIntoScreenSpace(x, y, z, camera, width, height) {
+  var p = new THREE.Vector3(x, y, z);
+  var vector = p.project(camera);
+
+  vector.x = (vector.x + 1) / 2 * width;
+  vector.y = -(vector.y - 1) / 2 * height;
+
+  return vector;
 }
 
 function splitAdjoiningFace(face, faceIndex, geometry) {
@@ -1296,7 +1309,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   return (coplanarAdjacentFaces);
 }
 
-// create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
+// [x] create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
 function assignFacesToCoplanarGroups(geometry) {
   var faceIndexList = _.mapObject(_.keys(geometry.faces), function() { return true; });
   var processedFaces = {};
@@ -1649,6 +1662,16 @@ function updateRoomView() {
   parent.rotation.x = roomRotateX;
   parent.rotation.y = roomRotateY;
 
+  var cutplaneNormal = new THREE.Vector3(0,0,1);
+  cutplaneNormal.applyAxisAngle(new THREE.Vector3(1,0,0), roomRotateX);
+  cutplaneNormal.applyAxisAngle(new THREE.Vector3(0,1,0), roomRotateY);
+  var cutplaneNormal2D_1 = project3DVectorIntoScreenSpace(0,0,0, camera, window.innerWidth, window.innerHeight);
+  var cutplaneNormal2D_2 = project3DVectorIntoScreenSpace(cutplaneNormal.x, cutplaneNormal.y, cutplaneNormal.z, camera, window.innerWidth, window.innerHeight);
+  var cutplaneVectorScreen = new THREE.Vector2(cutplaneNormal2D_2.x - cutplaneNormal2D_1.x, 
+                                               cutplaneNormal2D_2.y - cutplaneNormal2D_1.y );
+  cutplaneVectorScreen.normalize();
+  cutplaneVector2d = '[' + cutplaneNormal.x + ',' + cutplaneNormal.y + ',' + cutplaneNormal.z + ' : ' + 
+                     cutplaneVectorScreen.x + ',' + cutplaneVectorScreen.y + ']';
 }
 
 // http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
@@ -1682,7 +1705,8 @@ function updateCrosshair() {
   }
 
   debugText(['Crosshair set.', 
-             'activeFace:', activeFaceStr,
+             'activeFace:',  activeFaceStr,
+             'cplaneVec2d:', cutplaneVector2d,
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
              'X:',       crosshair.position.x, 

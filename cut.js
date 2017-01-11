@@ -88,7 +88,7 @@ var firstRender = true;
 
 var allLabels = [];
 var activeFace = -1;
-var activeFaceStr = '';
+var activeFaceStr;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 
@@ -112,11 +112,11 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 
 
 document.onmousedown = function(e) {
-  updatePickedItems(true);
+  updatePickedItems(true, e.shiftKey);
 }
 
 document.onmouseup = function(e) {
-  updatePickedItems(false);
+  updatePickedItems(false, false);
 }
 
 document.onmousemove = function(e){
@@ -929,13 +929,17 @@ function setupHackFiller() {
 // --------------------------------------------------------------------------------
 
 
-function updatePickedItems(mouseDown) {
+function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
-    pickedItems = [];
+    if (!shiftKeyDown) {
+      pickedItems = [];
+    }
     if (selectableItem.type == 'mesh') {
       selectableItem.selectMesh.material = selectMeshMaterialSelected;
-      pickedItems = [ selectableItem ];
+      pickedItems.push(selectableItem);
       dragging = true;
+    } else if (selectableItem.type == 'none') {
+      pickedItems = [];
     }
   } else {
     dragging = false;
@@ -1628,18 +1632,8 @@ function updatePickSquare() {
           activeFaceStr = 'ID:' + ff + ' V:[' + highlightCenter.face.a + ',' + highlightCenter.face.b + ',' + highlightCenter.face.c + ']';
           break;
         }
-        break highlightLoop; // we found a face to highlight, stop here.
       }
-      /*
-      if (ff) {
-        var spritey = allLabels[ff];
-        activeSprite = spritey;
-        var spaceFactor = 0.2;
-        spritey.position.set(highlightCenter.x + highlightCenter.face.normal.x * spaceFactor,
-                             highlightCenter.y + highlightCenter.face.normal.y * spaceFactor,
-                             pickSquare.position.z = plane.position.z + 0.01);
-      }
-      */
+      break highlightLoop; // we found a face to highlight, stop here.
     }
   }
 }
@@ -1717,6 +1711,9 @@ function updateCrosshair() {
         pickedItem.item.geometry.translate(xDiff, yDiff, 0.0);
       }
       // console.log('Translating object by:', xDiff, yDiff);
+    } else {
+      updatePickSquare();
+      updateSelectableItem();
     }
   }
 
@@ -1795,9 +1792,8 @@ function updateCursorTracking() {
   cursor.last.y = cursor.current.y;
 }
 
-function displaySelectableItem() {
+function updateSelectableItem() {
   var selectMesh;
-  csgPrimitiveSelected = undefined;
 
   // First move away any previously displayed selectable highlight
   if (selectableItem) {
@@ -1862,12 +1858,10 @@ function render() {
 
   checkWireFrameToggle();
   updateRoomView();
-  displaySelectableItem();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
   drawSectionLineThreeMesh();
-  updatePickSquare();
 
   firstRender = false;
 

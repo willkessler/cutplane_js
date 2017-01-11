@@ -509,14 +509,20 @@ function setupTest() {
 function setupHelp() {
   var text2 = document.createElement('div');
   text2.style.position = 'absolute';
+  text2.className = 'instructions';
   //text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
   text2.className = "instructions";
-  text2.innerHTML = "Hold down Option key to move Cutplane.<br>Hold down command key to rotate room.<br>Mouse near faces to modify shapes."
+  text2.innerHTML = '<ul class="hints">' +
+                    '<li><div class="key">Option-mouse</div><div class="hintText">Move cutplane</div></li>' +
+                    '<li><div class="key">Command-mouse</div><div class="hintText">Rotate view</div></li>' +
+                    '<li><div class="key">Shift-Click</div><div class="hintText">Select multiple items</div></li>' +
+                    '</ul>';
   document.body.appendChild(text2);
 
   /* Status */
   text3 = document.createElement('div');
   text3.style.position = 'absolute';
+  text3.className = 'status';
   //text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
   text3.className = "status";
   text3.innerHTML = "status";

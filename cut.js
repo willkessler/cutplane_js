@@ -559,7 +559,7 @@ function setupCutplane() {
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set( 512,512);
 
-  var material = new THREE.MeshLambertMaterial({map: texture, transparent:true });
+  var material = new THREE.MeshLambertMaterial({map: texture, transparent:true, side: THREE.DoubleSide });
   var shape = new THREE.Shape();
   shape.moveTo(-1,-1,0);
   shape.lineTo(1,-1,0);
@@ -1732,8 +1732,8 @@ function updateRoomView() {
     roomRotateX = Math.min(90 * DEG_TO_RAD, Math.max(0, roomRotateX + cursorYdiff * DEG_TO_RAD));
     roomRotateY = Math.min(90 * DEG_TO_RAD, Math.max(-90 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
 */
-    roomRotateX = Math.min(90 * DEG_TO_RAD, Math.max(-180, roomRotateX + cursorYdiff * DEG_TO_RAD));
-    roomRotateY = Math.min(90 * DEG_TO_RAD, Math.max(-180 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
+    roomRotateX = Math.min(180 * DEG_TO_RAD, Math.max(-180, roomRotateX + cursorYdiff * DEG_TO_RAD));
+    roomRotateY = Math.min(180 * DEG_TO_RAD, Math.max(-180 * DEG_TO_RAD, roomRotateY + cursorXdiff * DEG_TO_RAD));
     //console.log('roomRotateX:', roomRotateX, 'roomRotateY:', roomRotateY);
   }
   parent.rotation.x = roomRotateX;

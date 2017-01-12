@@ -26,6 +26,7 @@
 //  [ ] Use geometry.dynamic = true and geometry.verticesNeedUpdate=true to allow edge and vertex dragging
 //  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  
+//  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] Fix section line bug where sometimes it will jump over the surface
 //  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] load/save models to cloud
@@ -515,6 +516,7 @@ function setupHelp() {
                     '<li><div class="key">Option-mouse</div><div class="hintText">Move cutplane</div></li>' +
                     '<li><div class="key">Command-mouse</div><div class="hintText">Rotate view</div></li>' +
                     '<li><div class="key">Shift-Click</div><div class="hintText">Select multiple items</div></li>' +
+                    '<li><div class="key">W</div><div class="hintText">Toggle wireframe display</div></li>' +
                     '</ul>';
   document.body.appendChild(text2);
 
@@ -771,10 +773,10 @@ function setupJSModel() {
 function setupSelectMesh(csgPrimitiveMesh) {
   var selectMesh = csgPrimitiveMesh.clone();
   csgPrimitiveMesh.selectMesh = selectMesh;
-  selectMeshMaterialUnselected = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+  selectMeshMaterialUnselected = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.BackSide } );
   selectMeshMaterialSelected = new THREE.MeshBasicMaterial( { color: 0xff0000, side: THREE.BackSide } );
   selectMesh.material = selectMeshMaterialUnselected;
-  selectMesh.scale.multiplyScalar(1.03);
+  selectMesh.scale.multiplyScalar(1.04);
   selectMesh.position.x = 100000;
   parent.add(selectMesh);
 }
@@ -947,12 +949,20 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     if (!shiftKeyDown) {
       pickedItems = [];
     }
-    if (selectableItem.type == 'mesh') {
-      selectableItem.selectMesh.material = selectMeshMaterialSelected;
-      pickedItems.push(selectableItem);
-      dragging = true;
-    } else if (selectableItem.type == 'none') {
-      pickedItems = [];
+    switch (selectableItem.type) {
+      case 'mesh':
+        selectableItem.selectMesh.material = selectMeshMaterialSelected;
+        pickedItems.push(selectableItem);
+        dragging = true;
+        break;
+      case 'coplanarGroup':
+        pickedItems.push(selectableItem);
+        dragging = true;
+        break;
+      case 'none':
+      default:
+        dragging = false;
+        pickedItems = [];
     }
   } else {
     dragging = false;
@@ -1285,6 +1295,7 @@ function assignVertexFaceHashes(geometry) {
 function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   var adjoiningFaceIndexes;
   var coplanarAdjacentFaces = {};
+  var coplanarAdjacentVertices = {};
   var examQueue = [];
   var examined = {};
   var examFace, examFaceIndex;
@@ -1293,8 +1304,14 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   var vertices = geometry.vertices;
   var startFace = faces[startFaceIndex];
   examQueue.push(startFaceIndex);
-  coplanarAdjacentFaces[startFaceIndex] = true; // include the start face
+  // include the start face as a coplanar face
+  coplanarAdjacentVertices[startFace.a] = true;
+  coplanarAdjacentVertices[startFace.b] = true;
+  coplanarAdjacentVertices[startFace.c] = true;
+  coplanarAdjacentFaces[startFaceIndex] = true; 
+  // Map vertices back to all faces they belong to
   assignVertexFaceHashes(geometry);
+
   while (examQueue.length > 0) {
     examFaceIndex = examQueue.pop();
     examFace = faces[examFaceIndex];
@@ -1319,6 +1336,9 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
               //console.log('Pushing adjoining face due to vertices in common:', adjoiningFaceIndex);
               coplanarAdjacentFaces[adjoiningFaceIndex] = true;
               examQueue.push(adjoiningFaceIndex);
+              coplanarAdjacentVertices[adjoiningFace.a] = true;
+              coplanarAdjacentVertices[adjoiningFace.b] = true;
+              coplanarAdjacentVertices[adjoiningFace.c] = true;
             } else {
               // it's possible the adjoining face only touches vertices to the middle of edges, so check for that.
               edgeIntersectExam:
@@ -1332,6 +1352,9 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
                     console.log('j=', j, 'Source face:', examFaceIndex, examFace, 'We found split point on adjoining face index:', adjoiningFaceIndex, adjoiningFace);
                     coplanarAdjacentFaces[adjoiningFaceIndex] = true;
                     examQueue.push(adjoiningFaceIndex);
+                    coplanarAdjacentVertices[adjoiningFace.a] = true;
+                    coplanarAdjacentVertices[adjoiningFace.b] = true;
+                    coplanarAdjacentVertices[adjoiningFace.c] = true;
                     break edgeIntersectExam;
                   }
                 }
@@ -1344,7 +1367,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
     examined[examFaceIndex] = true;
   }
 
-  return (coplanarAdjacentFaces);
+  return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices });
 }
 
 function assignFacesToCoplanarGroups(csgPrimitive) {
@@ -1359,10 +1382,10 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   for (var processFaceIndex in faceIndexList) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
-      coplanarFaces = findCoplanarAdjacentFaces(processFaceIndex, geometry);
-      coplanarGroups.push(coplanarFaces);
+      coplanars = findCoplanarAdjacentFaces(processFaceIndex, geometry);
+      coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices });
       coplanarGroupMax = coplanarGroups.length - 1;
-      for (var groupedFaceIndex in coplanarFaces) {
+      for (var groupedFaceIndex in coplanars.faces) {
         faces[groupedFaceIndex].coplanarGroupIndex = coplanarGroupMax;
         //faces[groupedFaceIndex].color.setHex(0x0000ff);
         processedFaces[groupedFaceIndex] = true;
@@ -1558,9 +1581,9 @@ function drawSectionLineThreeMesh() {
 // Update functions
 // --------------------------------------------------------------------------------
 
-function checkCoplanarity(f1, f2) {
-  return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
-}
+// --------------------------------------------------------------------------------
+/* DEFUNCT */
+// --------------------------------------------------------------------------------
 
 function findAdjacentFaces(v1, v2, csgPrimitive) {
   var edgeKey = v1 + '_' + v2;
@@ -1589,18 +1612,34 @@ function findCoplanarAdjacentFacesOrig(v1, v2, evalFace, evalStack, coplanarFace
   }
 }
 
+// --------------------------------------------------------------------------------
+/* END DEFUNCT */
+// --------------------------------------------------------------------------------
+
+function checkCoplanarity(f1, f2) {
+  return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
+}
+
+
 function makeCoplanarGroupSelectable(coplanarGroupIndex, csgPrimitive) {
   selectableItem = { 
     type:'coplanarGroup', 
     item: csgPrimitive.geometry.coplanarGroups[coplanarGroupIndex],
     csgPrimitive: csgPrimitive
   };
-  for (var faceIndex in selectableItem.item) {
+  for (var faceIndex in selectableItem.item.faces) {
     csgPrimitive.geometry.faces[faceIndex].color.setHex(0xffff00);
   }
   csgPrimitive.geometry.colorsNeedUpdate = true;
 }
 
+function moveCoplanarGroup(coplanarGroup, csgPrimitive, offset) {
+  var vertices = csgPrimitive.geometry.vertices;
+  for (var vertIndex in coplanarGroup.vertices) {
+    vertices[vertIndex].addVectors(vertices[vertIndex],offset);
+  }
+  csgPrimitive.geometry.elementsNeedUpdate = true;
+}
 
 function updatePickSquare() {
   //debugger;
@@ -1728,7 +1767,16 @@ function updateCrosshair() {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       for (var pickedItem of pickedItems) {
-        pickedItem.item.geometry.translate(xDiff, yDiff, 0.0);
+        switch (pickedItem.type) {
+          case 'coplanarGroup':
+            addToDebugText(['Clicking coplanarGroup']);
+            moveCoplanarGroup(pickedItem.item, pickedItem.csgPrimitive, new THREE.Vector3(xDiff, yDiff, 0.0));
+            break;
+          case 'mesh':
+          default:
+            pickedItem.item.geometry.translate(xDiff, yDiff, 0.0);
+            break;
+        }
       }
       // console.log('Translating object by:', xDiff, yDiff);
     } else {
@@ -1819,7 +1867,7 @@ function updateSelectableItem() {
       selectMesh = selectableItem.selectMesh;
       selectMesh.position.x = 10000;
     } else if (selectableItem.type == 'coplanarGroup') {
-      for (var faceIndex in selectableItem.item) {
+      for (var faceIndex in selectableItem.item.faces) {
         selectableItem.csgPrimitive.geometry.faces[faceIndex].color.setHex(0xffffff);
       }
       selectableItem.csgPrimitive.geometry.colorsNeedUpdate = true;

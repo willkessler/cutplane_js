@@ -520,6 +520,7 @@ function setupHelp() {
                     '<li><div class="key">Cmd-Z</div><div class="hintText">Undo last change</div></li>' +
                     '<li><div class="key">Shift-Cmd-Z</div><div class="hintText">Redo last change</div></li>' +
                     '<li><div class="key">W</div><div class="hintText">Toggle wireframe display</div></li>' +
+                    '<li><div class="key">A</div><div class="hintText">Apply face splitter algo</div></li>' +
                     '</ul>';
   document.body.appendChild(text2);
 
@@ -1980,4 +1981,5 @@ setupLights();
 
 
 render();
+
 

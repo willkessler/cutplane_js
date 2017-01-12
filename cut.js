@@ -8,6 +8,7 @@
 //  [X] Fix cursor offset bugs: try new algo where i just move based on mouse movesn
 //  [X] make cursor look more like the old cursor
 //  [X] Use cutSections to determine what is near the cursor instead of sectionPoints
+//  [X] look at CSG plugin https://github.com/chandlerprall/ThreeCSG/
 //  [X] Support dragging of objects: http://stackoverflow.com/questions/22521982/js-check-if-point-inside-a-polygon
 //  [X]  Fix fillInOneEdgeMap so that edges are only stored once
 //  [N]  Compute section line from edge maps.  WONT_DO
@@ -19,22 +20,23 @@
 //      http://stackoverflow.com/questions/27409074/three-js-converting-3d-position-to-2d-screen-position-r69
 //  [X] create coplanar groups on the geometry level; point faces back to the group they belong in so we can move all of them at once
 //  [X]  Fix tolerance inconsistencies in csg models.
-// [ ]  Fix picking and dragging code to be more flexible
-// [ ]  Separately compute faces that are in the plane and highlight them differently
-
-//  [ ] Proper support of dragging of multiple objects
-//  [ ] Use geometry.dynamic = true and geometry.verticesNeedUpdate=true to allow edge and vertex dragging
-//  [ ] Support grabbing edges and faces and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
-//  
+//  [X]  Fix picking and dragging code to be more flexible
+//  [X] Proper support of dragging of multiple objects
+//  [X] Support grabbing faces and dragging them and update the model . Faces only move along their normal
+//  [X] Investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
+//  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
+//  [ ] Separately compute faces that are in the plane and highlight them differently
+//  [ ] If looking at room from behind, reverse the cursor controls
 //  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] Fix section line bug where sometimes it will jump over the surface
 //  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] load/save models to cloud
 //  [ ] restore booleans manipulations within the UI cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
-//  [ ] restore snapping of faces to other faces
+//  [ ] use mousewheel to zoom in and out
+//  [ ] cmd-z to undo drags
+//  [ ] fix the coplanar faces issues on the CSG boolean results
+//  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
 //  [ ] restore the tool chests
-//  [ ] investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
-//  [ ] look at CSG plugin https://github.com/chandlerprall/ThreeCSG/
 
 // http://jsfiddle.net/hbt9c/317/
 
@@ -152,15 +154,14 @@ document.body.addEventListener("mouseenter", handleMouseEnter, false);
 
 
 function handleKeyDown(event) {
-  console.log('key pressed:', event.keyCode);
+  console.log('Key pressed:', event.keyCode);
   switch (event.keyCode) {
     case 18:
       window.optionKeyPressed = true;
       break;
     case 17:
       break; // control key
-    case 65:
-      doAllCorrections();
+    case 65: // "A" key, not used
       break;
     case 87:
       window.wKeyPressed = true;
@@ -516,6 +517,8 @@ function setupHelp() {
                     '<li><div class="key">Option-mouse</div><div class="hintText">Move cutplane</div></li>' +
                     '<li><div class="key">Command-mouse</div><div class="hintText">Rotate view</div></li>' +
                     '<li><div class="key">Shift-Click</div><div class="hintText">Select multiple items</div></li>' +
+                    '<li><div class="key">Cmd-Z</div><div class="hintText">Undo last change</div></li>' +
+                    '<li><div class="key">Shift-Cmd-Z</div><div class="hintText">Redo last change</div></li>' +
                     '<li><div class="key">W</div><div class="hintText">Toggle wireframe display</div></li>' +
                     '</ul>';
   document.body.appendChild(text2);
@@ -782,6 +785,7 @@ function setupSelectMesh(csgPrimitiveMesh) {
 }
 
 
+/*
 function doAllCorrections() {
   var csgPrimitiveMesh = csgPrimitives.children[0];
   console.log('Num faces before:', csgPrimitiveMesh.geometry.faces.length, 'Num verts before:', csgPrimitiveMesh.geometry.vertices.length);
@@ -794,6 +798,7 @@ function doAllCorrections() {
   updateEdgeMaps(csgPrimitiveMesh);
   console.log('Num faces after all:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after all:', csgPrimitiveMesh.geometry.vertices.length);
 }
+*/
 
 // working example: http://jsfiddle.net/L0rdzbej/151/
 function setupCSGModels() {

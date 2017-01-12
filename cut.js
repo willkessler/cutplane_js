@@ -24,6 +24,13 @@
 //  [X] Proper support of dragging of multiple objects
 //  [X] Support grabbing faces and dragging them and update the model . Faces only move along their normal
 //  [X] Investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
+
+// Check if the CSG lib is in ES6
+// Stay on the face normal when you drag the face
+// Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
+// pay attention to the direction of the vector to make sure you're taking the inside angle every time
+// R to snap the rotate tool. investigate how to rotate an object
+
 //  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] Separately compute faces that are in the plane and highlight them differently
 //  [ ] If looking at room from behind, reverse the cursor controls
@@ -286,6 +293,8 @@ function pointInPoly (point, poly) {
   return inside;
 };
 
+// This function is also apparently built in to THREEjs, cf https://threejs.org/docs/?q=plane#Reference/Math/Plane intersectsLine(). 
+// However, we need the intersection point and the t value.
 function intersectLineWithPlane(P0, P1, planeZ) {
   var n =  new THREE.Vector3(0,0,1); // normal vector to cutplane
   var u = new THREE.Vector3();
@@ -515,8 +524,9 @@ function setupHelp() {
   text2.className = "instructions";
   text2.innerHTML = '<ul class="hints">' +
                     '<li><div class="key">Option-mouse</div><div class="hintText">Move cutplane</div></li>' +
-                    '<li><div class="key">Command-mouse</div><div class="hintText">Rotate view</div></li>' +
+                    '<li><div class="key">Cmd-mouse</div><div class="hintText">Rotate view</div></li>' +
                     '<li><div class="key">Shift-Click</div><div class="hintText">Select multiple items</div></li>' +
+                    '<li><div class="key">Mouse-wheel</div><div class="hintText">Zoom</div></li>' +
                     '<li><div class="key">Cmd-Z</div><div class="hintText">Undo last change</div></li>' +
                     '<li><div class="key">Shift-Cmd-Z</div><div class="hintText">Redo last change</div></li>' +
                     '<li><div class="key">W</div><div class="hintText">Toggle wireframe display</div></li>' +
@@ -865,7 +875,7 @@ function setupCSGModels() {
   var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length ) );
   box2.geometry.translate(-0.75,-0.25,-0.75);
   box2.material = window.csgPrimitiveMaterialFlat;
-  csgPrimitives.add(box2);  
+  //csgPrimitives.add(box2);  
 
   setupSelectMesh(box2);
   assignFacesToAllCoplanarGroups();

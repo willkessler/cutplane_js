@@ -86,9 +86,8 @@ var roomRotateY = Math.PI/4;
 var cutSections;
 var firstRender = true;
 
+var debugTextArray = [];
 var allLabels = [];
-var activeFace = -1;
-var activeFaceStr;
 
 var cursor = { current: {x:0, y:0}, last: {x:0,y:0} };
 
@@ -530,9 +529,15 @@ function setupHelp() {
   
 }
 
-function debugText(displayArray) {
-  text3.innerHTML = displayArray.join('<br>');
+function renderDebugText(displayArray) {
+  text3.innerHTML = debugTextArray.join('');
+  debugTextArray = []; /* clear for next loop */
 }
+
+function addToDebugText(debugText) {
+  debugTextArray.push(debugText.join('<br>'));
+}
+
 
 function setupLights() {
   var dirLight = new THREE.DirectionalLight();
@@ -934,6 +939,8 @@ function setupHackFiller() {
 // Main interaction functions
 // --------------------------------------------------------------------------------
 
+
+// Shiftkey: http://stackoverflow.com/questions/3781142/jquery-or-javascript-how-determine-if-shift-key-being-pressed-while-clicking-an
 
 function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
@@ -1582,12 +1589,24 @@ function findCoplanarAdjacentFacesOrig(v1, v2, evalFace, evalStack, coplanarFace
   }
 }
 
+function makeCoplanarGroupSelectable(coplanarGroupIndex, csgPrimitive) {
+  selectableItem = { 
+    type:'coplanarGroup', 
+    item: csgPrimitive.geometry.coplanarGroups[coplanarGroupIndex],
+    csgPrimitive: csgPrimitive
+  };
+  for (var faceIndex in selectableItem.item) {
+    csgPrimitive.geometry.faces[faceIndex].color.setHex(0xffff00);
+  }
+  csgPrimitive.geometry.colorsNeedUpdate = true;
+}
+
 
 function updatePickSquare() {
   //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
-  highlightLoop:
+
   for (var csgPrimitive of csgPrimitives.children) {
     for (var sectionEdge in csgPrimitive.sectionEdges) {
       coordsArray = [];
@@ -1625,23 +1644,18 @@ function updatePickSquare() {
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.face) {
-      var coplanarFaceIndexes = csgPrimitive.geometry.coplanarGroups[highlightCenter.face.coplanarGroupIndex];
-      for (var faceIndex in coplanarFaceIndexes) {
-        csgPrimitive.geometry.faces[faceIndex].color.setHex(0xff0000);
-      }
-      csgPrimitive.geometry.colorsNeedUpdate = true;
+      makeCoplanarGroupSelectable(highlightCenter.face.coplanarGroupIndex, csgPrimitive);
 
-      activeFaceStr = '';
       for (ff in csgPrimitive.geometry.faces) {
         if (csgPrimitive.geometry.faces[ff] == highlightCenter.face) {
-          activeFace = ff;
-          activeFaceStr = 'ID:' + ff + ' V:[' + highlightCenter.face.a + ',' + highlightCenter.face.b + ',' + highlightCenter.face.c + ']';
+          addToDebugText(['active face:', 'ID:' + ff + ' V:[' + highlightCenter.face.a + ',' + highlightCenter.face.b + ',' + highlightCenter.face.c + ']']);
           break;
         }
       }
-      break highlightLoop; // we found a face to highlight, stop here.
+      return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
+  return(false);
 }
 
 
@@ -1718,12 +1732,10 @@ function updateCrosshair() {
       }
       // console.log('Translating object by:', xDiff, yDiff);
     } else {
-      updatePickSquare();
       updateSelectableItem();
     }
   }
 
-  debugText(['activeFace:',  activeFaceStr]);
 /*
              'cursorX:', cursor.current.x,
              'cursorY:', cursor.current.y,
@@ -1806,29 +1818,35 @@ function updateSelectableItem() {
     if (selectableItem.type == 'mesh') {
       selectMesh = selectableItem.selectMesh;
       selectMesh.position.x = 10000;
+    } else if (selectableItem.type == 'coplanarGroup') {
+      for (var faceIndex in selectableItem.item) {
+        selectableItem.csgPrimitive.geometry.faces[faceIndex].color.setHex(0xffffff);
+      }
+      selectableItem.csgPrimitive.geometry.colorsNeedUpdate = true;
     }
     selectableItem = { type: 'none' };
   }
 
-  if (cutSections && cutSections.children && cutSections.children.length > 0) {
-    var cutSection, csgPrimitive;
-    for (var cutSection of cutSections.children) {
-      csgPrimitive = cutSection.csgPrimitive;
+  if (!updatePickSquare()) {
+    if (cutSections && cutSections.children && cutSections.children.length > 0) {
+      var cutSection, csgPrimitive;
+      for (var cutSection of cutSections.children) {
+        csgPrimitive = cutSection.csgPrimitive;
 
-      if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
-        // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
-        // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
-        selectableItem = { 
-          type:'mesh', 
-          item: csgPrimitive,
-          selectMesh: csgPrimitive.selectMesh          
-        };
-        selectableItem.selectMesh.position.x = 0;
-        break;
+        if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
+          // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
+          // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
+          selectableItem = { 
+            type:'mesh', 
+            item: csgPrimitive,
+            selectMesh: csgPrimitive.selectMesh          
+          };
+          selectableItem.selectMesh.position.x = 0;
+          break;
+        }
       }
     }
-  }
-      
+  }      
 }
 
 function checkWireFrameToggle() {
@@ -1868,6 +1886,8 @@ function render() {
   updateCutplane();
   updateCursorTracking();
   drawSectionLineThreeMesh();
+
+  renderDebugText();
 
   firstRender = false;
 

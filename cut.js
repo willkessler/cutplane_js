@@ -24,13 +24,14 @@
 //  [X] Proper support of dragging of multiple objects
 //  [X] Support grabbing faces and dragging them and update the model . Faces only move along their normal
 //  [X] Investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
+//  [X] Check if the CSG lib is in ES6. Yes, it is, but it doesn't make much difference to the resulting coplanar face mess.
+//  [X] Stay on the face normal when you drag the face
 
-// Check if the CSG lib is in ES6
-// Stay on the face normal when you drag the face
-// Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
-// pay attention to the direction of the vector to make sure you're taking the inside angle every time
-// R to snap the rotate tool. investigate how to rotate an object
+//  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 
+
+//  [ ] Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
+//      pay attention to the direction of the vector to make sure you're taking the inside angle every time
 //  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] Separately compute faces that are in the plane and highlight them differently
 //  [ ] If looking at room from behind, reverse the cursor controls
@@ -347,7 +348,7 @@ function project3DVectorIntoScreenSpace(x, y, z, camera, width, height) {
 }
 
 // https://www.gamedev.net/topic/556821-check-if-vectors-are-parallel-and-pointing-in-the-same-direction-with-tolerance/, second response useful
-function projectOntoVector2d(v1, v2) {
+function projectOntoVector(v1, v2) {
   var dotProd = v1.dot(v2);
   var v2LenSquared = sqr(v2.length());
   var scalar = dotProd * v2LenSquared;
@@ -1312,6 +1313,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   var adjoiningFaceIndexes;
   var coplanarAdjacentFaces = {};
   var coplanarAdjacentVertices = {};
+  var coplanarsNormal = undefined;
   var examQueue = [];
   var examined = {};
   var examFace, examFaceIndex;
@@ -1355,6 +1357,9 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
               coplanarAdjacentVertices[adjoiningFace.a] = true;
               coplanarAdjacentVertices[adjoiningFace.b] = true;
               coplanarAdjacentVertices[adjoiningFace.c] = true;
+              if (!coplanarsNormal) {
+                coplanarsNormal = adjoiningFace.normal.clone();
+              }
             } else {
               // it's possible the adjoining face only touches vertices to the middle of edges, so check for that.
               edgeIntersectExam:
@@ -1371,6 +1376,9 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
                     coplanarAdjacentVertices[adjoiningFace.a] = true;
                     coplanarAdjacentVertices[adjoiningFace.b] = true;
                     coplanarAdjacentVertices[adjoiningFace.c] = true;
+                    if (!coplanarsNormal) {
+                      coplanarsNormal = adjoiningFace.normal.clone();
+                    }
                     break edgeIntersectExam;
                   }
                 }
@@ -1383,7 +1391,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
     examined[examFaceIndex] = true;
   }
 
-  return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices });
+  return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices, normal:coplanarsNormal });
 }
 
 function assignFacesToCoplanarGroups(csgPrimitive) {
@@ -1399,7 +1407,7 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
       coplanars = findCoplanarAdjacentFaces(processFaceIndex, geometry);
-      coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices });
+      coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices, normal: coplanars.normal });
       coplanarGroupMax = coplanarGroups.length - 1;
       for (var groupedFaceIndex in coplanars.faces) {
         faces[groupedFaceIndex].coplanarGroupIndex = coplanarGroupMax;
@@ -1409,7 +1417,7 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
     }
   }
   geometry.coplanarGroups = coplanarGroups;
-  geometry.colorsNeedUpdate = true;
+  //geometry.colorsNeedUpdate = true;
 }
 
 function assignFacesToAllCoplanarGroups() {
@@ -1786,7 +1794,9 @@ function updateCrosshair() {
         switch (pickedItem.type) {
           case 'coplanarGroup':
             addToDebugText(['Clicking coplanarGroup']);
-            moveCoplanarGroup(pickedItem.item, pickedItem.csgPrimitive, new THREE.Vector3(xDiff, yDiff, 0.0));
+            var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
+            var projectedVector = projectOntoVector(diffVector, pickedItem.item.normal);
+            moveCoplanarGroup(pickedItem.item, pickedItem.csgPrimitive, projectedVector);
             break;
           case 'mesh':
           default:
@@ -1846,7 +1856,7 @@ function updateCutplane() {
       (cursor.current.x - cursor.last.x) * .01,
       (cursor.current.y - cursor.last.y) * .01
     );
-    var projectedVector = projectOntoVector2d(cursorDiff, cutplaneVectorScreenSpace);
+    var projectedVector = projectOntoVector(cursorDiff, cutplaneVectorScreenSpace);
     var projectedVectorNormalized = projectedVector.clone();
     projectedVectorNormalized.normalize();
     var dotProd = projectedVectorNormalized.dot(cutplaneVectorScreenSpace);

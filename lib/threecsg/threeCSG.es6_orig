@@ -4,7 +4,7 @@ const EPSILON = 1e-5,
     FRONT = 1,
     BACK = 2,
     SPANNING = 3;
-class ThreeBSP {
+export default class ThreeBSP {
     constructor(geometry) {
         // Convert THREE.Geometry to ThreeBSP
         var i, _length_i,

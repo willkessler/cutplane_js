@@ -27,15 +27,15 @@
 //  [X] Check if the CSG lib is in ES6. Yes, it is, but it doesn't make much difference to the resulting coplanar face mess.
 //  [X] Stay on the face normal when you drag the face
 
+//  [ ] If looking at room from behind, reverse the cursor controls
+//  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 
 
 //  [ ] Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
-//      pay attention to the direction of the vector to make sure you're taking the inside angle every time
+//      pay attention to the direction of the vector to make sure you're taking the inside angle every time. Alternatively, use raycasting approach.
 //  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] Separately compute faces that are in the plane and highlight them differently
-//  [ ] If looking at room from behind, reverse the cursor controls
-//  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] Fix section line bug where sometimes it will jump over the surface
 //  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] load/save models to cloud
@@ -116,6 +116,19 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
   depthFunc: THREE.AlwaysDepth
 });
 
+var csgPrimitiveMaterialFlat = new THREE.MeshStandardMaterial ( {
+  shading: THREE.FlatShading,
+  color:0xffffff,
+  side: THREE.DoubleSide,
+  vertexColors: THREE.FaceColors // you need this if you want to change face colors later
+} );
+
+// http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
+var csgPrimitiveMaterialWire = new THREE.MeshBasicMaterial ( {
+  color:0xffffff,
+  wireframe: true
+} );
+
 // -------------------------------------------------------------------------------------------------------------
 // Setup
 // -------------------------------------------------------------------------------------------------------------
@@ -170,6 +183,7 @@ function handleKeyDown(event) {
     case 17:
       break; // control key
     case 65: // "A" key, not used
+      improveTriangulation();
       break;
     case 87:
       window.wKeyPressed = true;
@@ -402,6 +416,7 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
 
               */
               // 4,8 causes issues
+              /*
               if (adjoinFaceIndex == 30) {
                 console.log('face indexes:', faceArray[0], faceArray[1], faceArray[2]);
                 console.log('adjoinFace indexed:', adjoinFaceArray[0], adjoinFaceArray[1], adjoinFaceArray[2]);
@@ -409,6 +424,7 @@ function splitAdjoiningFace(face, faceIndex, geometry) {
                 console.log('adjoinFace:', vertices[adjoinFaceArray[0]], vertices[adjoinFaceArray[1]], vertices[adjoinFaceArray[2]]);
                 debugger;
               }
+              */
 
               adjoinFace.a = adjoinFaceArray[i];
               adjoinFace.b = faceArray[j];
@@ -498,23 +514,6 @@ function makeTextSprite( message, parameters )
 // --------------------------------------------------------------------------------
 // Setup functions
 // --------------------------------------------------------------------------------
-
-function setupTest() {
-  // Hack testing/ demo part
-  
-  //var cubeCsg = CSG.fromCSG(csgOutput);
-  //parent.add(cubeCsg);
-
-/*
-     var lineGeometry = new THREE.Geometry();
-     var vertArray = lineGeometry.vertices;
-     vertArray.push( new THREE.Vector3(-100, -100, 0), new THREE.Vector3(100, 100, 0) );
-     lineGeometry.computeLineDistances();
-     var lineMaterial = new THREE.LineDashedMaterial( { color: 0x00cc00, dashSize: .03, gapSize: .03, linewidth: 1 } );
-     var line = new THREE.Line( lineGeometry, lineMaterial );
-     scene.add(line);
-   */
-}
 
 
 function setupHelp() {
@@ -803,7 +802,7 @@ function doAllCorrections() {
   console.log('Num faces before:', csgPrimitiveMesh.geometry.faces.length, 'Num verts before:', csgPrimitiveMesh.geometry.vertices.length);
   updateEdgeMaps(csgPrimitiveMesh);
   console.log('Num faces mid:', csgPrimitiveMesh.geometry.faces.length, 'Num verts mid:', csgPrimitiveMesh.geometry.vertices.length);
-  fillInMissingEdgeMaps();
+  improveTriangulation();
   console.log('Num faces after fillin:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after fillin:', csgPrimitiveMesh.geometry.vertices.length);
   correctDuplicateVertices(csgPrimitiveMesh.geometry);
   console.log('Num faces after correctDupe:', csgPrimitiveMesh.geometry.faces.length, 'Num verts after correctDupe:', csgPrimitiveMesh.geometry.vertices.length);
@@ -851,35 +850,20 @@ function setupCSGModels() {
   csgPrimitiveMesh = subtract_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
 
-  window.csgPrimitiveMaterialFlat = new THREE.MeshStandardMaterial ( {
-    shading: THREE.FlatShading,
-    color:0xffffff,
-    vertexColors: THREE.FaceColors // you need this if you want to change face colors later
-  } );
-
-  // http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
-  window.csgPrimitiveMaterialWire = new THREE.MeshBasicMaterial ( {
-    color:0xffffff,
-    wireframe: true
-  } );
-
-  // csgPrimitiveMesh.material = window.csgPrimitiveMaterialWire;
-  csgPrimitiveMesh.material = window.csgPrimitiveMaterialFlat;
+  // csgPrimitiveMesh.material = csgPrimitiveMaterialWire;
+  csgPrimitiveMesh.material = csgPrimitiveMaterialFlat;
 
   setupSelectMesh(csgPrimitiveMesh);
-  csgPrimitives.add( csgPrimitiveMesh );
+  //csgPrimitives.add( csgPrimitiveMesh );
 
   correctDuplicateVertices(csgPrimitiveMesh.geometry);
 
-  //doAllCorrections();
-
   var box2 = new THREE.Mesh( new THREE.BoxGeometry( width/2, height/2, length ) );
   box2.geometry.translate(-0.75,-0.25,-0.75);
-  box2.material = window.csgPrimitiveMaterialFlat;
+  box2.material = csgPrimitiveMaterialFlat;
   //csgPrimitives.add(box2);  
 
   setupSelectMesh(box2);
-  assignFacesToAllCoplanarGroups();
 
 
   /* Hack */
@@ -941,8 +925,8 @@ function setupLabels() {
   }
 }
 
-function setupHackFiller() {
-  var hackCube = new THREE.BoxGeometry( 1.99, 1.99, 1.99 );
+function setupHackFiller(cubeSize) {
+  var hackCube = new THREE.BoxGeometry( cubeSize - .01, cubeSize - .01, cubeSize - .01);
   var hackMaterial = new THREE.MeshBasicMaterial( { 
     color: 0x111111,
     side: THREE.DoubleSide, 
@@ -953,6 +937,98 @@ function setupHackFiller() {
 
   parent.add(hackFiller);
 }
+
+
+function setupSimpleTest() {
+  // Hack testing/ demo part
+  
+  var cubeSize = 0.5;
+
+  var geometry = new THREE.Geometry();
+
+  geometry.vertices.push(
+    new THREE.Vector3( -cubeSize,  cubeSize, 0 ),
+    new THREE.Vector3( -cubeSize, -cubeSize, 0 ),
+    new THREE.Vector3(  cubeSize, -cubeSize, 0 ),
+    new THREE.Vector3(  cubeSize,  cubeSize, 0 ),
+    new THREE.Vector3( -cubeSize,  cubeSize, -cubeSize ),
+    new THREE.Vector3( -cubeSize, -cubeSize, -cubeSize ),
+    new THREE.Vector3(  cubeSize, -cubeSize, -cubeSize ),
+    new THREE.Vector3(  cubeSize,  cubeSize, -cubeSize )
+  );
+
+  geometry.faces.push( new THREE.Face3( 0, 1, 2 ) );
+  geometry.faces.push( new THREE.Face3( 0, 3, 2 ) );
+  geometry.faces.push( new THREE.Face3( 4, 5, 6 ) );
+  geometry.faces.push( new THREE.Face3( 4, 6, 7 ) );
+  geometry.computeVertexNormals();
+
+  var obj = new THREE.Mesh( geometry);
+  obj.material = csgPrimitiveMaterialFlat;
+  setupSelectMesh(obj);
+  csgPrimitives.add(obj);
+}
+
+function setupCSGTest() {
+
+  var cubeSize = 1.8;
+  var box = new THREE.Mesh( new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize ) );
+  // CSG GEOMETRY
+  cube_bsp = new ThreeBSP( box );
+  var cutgeo = new THREE.SphereGeometry( 0.5,1,1 );
+
+  // move geometry to where the cut should be
+  var matrix = new THREE.Matrix4();
+  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) ); // this version , sphere does not intersect with cube
+  cutgeo.applyMatrix( matrix );
+
+  var sub =  new THREE.Mesh( cutgeo );
+  var substract_bsp  = new ThreeBSP( sub );
+  var subtract_bsp  = cube_bsp.subtract( substract_bsp );
+
+  var csgPrimitiveMesh = subtract_bsp.toMesh(); 
+  csgPrimitiveMesh.geometry.computeVertexNormals();
+  csgPrimitiveMesh.geometry.rotateY(90* DEG_TO_RAD);
+
+  csgPrimitiveMesh.material = csgPrimitiveMaterialWire;
+
+  setupSelectMesh(csgPrimitiveMesh);
+  correctDuplicateVertices(csgPrimitiveMesh.geometry);
+
+  csgPrimitives.add( csgPrimitiveMesh );
+  setupHackFiller(cubeSize);
+
+}
+
+
+/* Find perimeter of a coplanar face group so we can simplify it into a single poly for tesselation */
+function makeTess() {
+  var x = 0, y = 0;
+
+  var myShape = new THREE.Shape();
+  var chunk = 0.5;
+  myShape.moveTo( x, y);
+  
+  myShape.lineTo( x + chunk, y);
+  myShape.lineTo( x + chunk * 2, y + chunk);
+  myShape.lineTo( x + chunk * 2, y + chunk * 2);
+  myShape.lineTo( x + chunk, y + chunk * 3);
+  myShape.lineTo( x, y + chunk * 3);
+  myShape.lineTo( x - chunk, y + chunk * 2);
+  myShape.lineTo( x - chunk * 2, y + chunk);
+  myShape.lineTo( x - chunk, y);
+  myShape.lineTo( x - chunk, y);
+  myShape.lineTo( x, y + chunk);
+
+  var geometry = new THREE.ShapeGeometry( myShape );
+  var mesh = new THREE.Mesh( geometry, csgPrimitiveMaterialWire ) ;
+  geometry.rotateX(90 * DEG_TO_RAD);
+  geometry.translate(0.5, 0.5, -0.5);
+  assignVertexFaceHashes(geometry);
+  csgPrimitives.add(mesh);
+  
+}
+
 
 // --------------------------------------------------------------------------------
 // Main interaction functions
@@ -1275,7 +1351,7 @@ function updateEdgeMaps(csgPrimitive) {
 
 }
 
-function fillInMissingEdgeMaps() {
+function improveTriangulation() {
   for (var csgPrimitive of csgPrimitives.children) {
     var geometry = csgPrimitive.geometry;
     var numFaces = geometry.faces.length;
@@ -1321,6 +1397,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   var faces = geometry.faces;
   var vertices = geometry.vertices;
   var startFace = faces[startFaceIndex];
+  var perimeter = [];
   examQueue.push(startFaceIndex);
   // include the start face as a coplanar face
   coplanarAdjacentVertices[startFace.a] = true;
@@ -1351,7 +1428,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
             var vertsInCommon = _.intersection(overlap1, overlap2);
             // Check for vertices in common. If any vertices are in comment, these coplanar faces touch at least one vertex.
             if (vertsInCommon.length > 0) {
-              //console.log('Pushing adjoining face due to vertices in common:', adjoiningFaceIndex);
+              console.log('Pushing adjoining face due to ', vertsInCommon.length, ' vertices in common:', adjoiningFaceIndex);
               coplanarAdjacentFaces[adjoiningFaceIndex] = true;
               examQueue.push(adjoiningFaceIndex);
               coplanarAdjacentVertices[adjoiningFace.a] = true;
@@ -1369,7 +1446,7 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
                 for (var j = 0; j < FACELEN; ++j) {
                   splitPoint = distToSegmentSquared3d(vertices[overlap2[j]], vertices[adjoinP1], vertices[adjoinP2]);
                   if (splitPoint.distance < POINT_ON_LINE_TOLERANCE) {
-                    console.log('adding adjoining face due to edge intersection:', adjoiningFaceIndex);
+                    console.log('Adding adjoining face due to edge intersection:', adjoiningFaceIndex);
                     console.log('j=', j, 'Source face:', examFaceIndex, examFace, 'We found split point on adjoining face index:', adjoiningFaceIndex, adjoiningFace);
                     coplanarAdjacentFaces[adjoiningFaceIndex] = true;
                     examQueue.push(adjoiningFaceIndex);
@@ -1384,6 +1461,17 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
                 }
               }              
             }
+          } else {
+            var overlap1 = [adjoiningFace.a, adjoiningFace.b, adjoiningFace.c];
+            var overlap2 = [examFace.a, examFace.b, examFace.c];
+            var vertsInCommon = _.intersection(overlap1, overlap2);
+            if (vertsInCommon.length) {
+              console.log('vertsInCommon btwn examFace:', examFaceIndex, examFace, 'and adjoinFace:', adjoiningFaceIndex, adjoiningFace);
+            }
+            if (vertsInCommon.length > 1) {
+              vertsInCommonArray[vertsInCommon.sort().join('_')] = examFaceIndex + '_' + adjoiningFaceIndex;
+              perimeter.push({ verts: [vertsInCommon[0], vertsInCommon[1]],  walked: false});
+            }
           }
         }
       }
@@ -1391,7 +1479,8 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
     examined[examFaceIndex] = true;
   }
 
-  return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices, normal:coplanarsNormal });
+  console.log('vertsInCommonArray:', vertsInCommonArray);
+  return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices, normal:coplanarsNormal, perimeter: perimeter });
 }
 
 function assignFacesToCoplanarGroups(csgPrimitive) {
@@ -1403,11 +1492,12 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   var intIndex;
   var coplanarGroupMax;
   var coplanarGroups = [];
+  vertsInCommonArray = {};
   for (var processFaceIndex in faceIndexList) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
       coplanars = findCoplanarAdjacentFaces(processFaceIndex, geometry);
-      coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices, normal: coplanars.normal });
+      coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices, normal: coplanars.normal, perimeter: coplanars.perimeter });
       coplanarGroupMax = coplanarGroups.length - 1;
       for (var groupedFaceIndex in coplanars.faces) {
         faces[groupedFaceIndex].coplanarGroupIndex = coplanarGroupMax;
@@ -1418,6 +1508,43 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   }
   geometry.coplanarGroups = coplanarGroups;
   //geometry.colorsNeedUpdate = true;
+
+  for (var coplanarGroupIndex in coplanarGroups) {
+    var perimeter = coplanarGroups[coplanarGroupIndex].perimeter;
+    var vertices = [];
+    var ctr = 0;
+    vertices.push(perimeter[0].verts[0]);
+    var nextVert = perimeter[0].verts[1];
+    perimeter[0].walked = true;
+    while (ctr < perimeter.length) {
+      vertices.push(nextVert);
+      for (var scanner in perimeter) {
+        if (!perimeter[scanner].walked) {
+          if ((perimeter[scanner].verts[0] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[1]) == -1)) {
+            perimeter[scanner].walked = true;
+            nextVert = perimeter[scanner].verts[1];
+            console.log('Found nextVert:', nextVert, 'at position 1 at scanner:', scanner); 
+            break;
+          } else if ((perimeter[scanner].verts[1] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[0]) == -1)) {
+            perimeter[scanner].walked = true;
+            nextVert = perimeter[scanner].verts[0];
+            console.log('Found nextVert:', nextVert, 'at position 0 at scanner:', scanner); 
+            break;
+          }
+        }
+      }
+      if (nextVert == vertices[0]) {
+        console.log('Reached first vertex, stopping now.');
+        ctr = perimeter.length - 1;
+      }
+      ctr++;
+    }
+    perimeter.vertices = vertices;
+    console.log('Perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex, perimeter.vertices);
+    for (var vv of vertices) {
+      console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
+    }
+  }
 }
 
 function assignFacesToAllCoplanarGroups() {
@@ -1995,10 +2122,10 @@ setupPickSquare();
 camera.position.set( 0,0, 5);
 //controls.update();
 setupLights();
-//setupLabels();
+setupCSGTest();
+//setupSimpleTest();
 
-//setupHackFiller();
-
+assignFacesToAllCoplanarGroups();
 
 render();
 

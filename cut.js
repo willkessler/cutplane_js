@@ -106,6 +106,10 @@ var lineMaterial = new THREE.LineBasicMaterial({
   color: 0xffffff
 });
 
+var lineMaterialGreen = new THREE.LineBasicMaterial({
+  color: 0x00ff00
+});
+
 var sectionMaterialDashed = new THREE.LineDashedMaterial({
   color: 0xffff00,
   dashSize: .02,
@@ -926,7 +930,8 @@ function setupLabels() {
 }
 
 function setupHackFiller(cubeSize) {
-  var hackCube = new THREE.BoxGeometry( cubeSize - .01, cubeSize - .01, cubeSize - .01);
+  var margin = 0.02;
+  var hackCube = new THREE.BoxGeometry( cubeSize - margin, cubeSize - margin, cubeSize - margin);
   var hackMaterial = new THREE.MeshBasicMaterial( { 
     color: 0x111111,
     side: THREE.DoubleSide, 
@@ -971,15 +976,16 @@ function setupSimpleTest() {
 
 function setupCSGTest() {
 
-  var cubeSize = 1.8;
+  var cubeSize = 1.25;
   var box = new THREE.Mesh( new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize ) );
   // CSG GEOMETRY
   cube_bsp = new ThreeBSP( box );
-  var cutgeo = new THREE.SphereGeometry( 0.5,1,1 );
+  var cutgeo = new THREE.SphereGeometry( 1.0,8,8 );
 
   // move geometry to where the cut should be
   var matrix = new THREE.Matrix4();
-  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) ); // this version , sphere does not intersect with cube
+  matrix.setPosition( new THREE.Vector3(.75, .75, .75) );
+//  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) ); // this version , sphere does not intersect with cube
   cutgeo.applyMatrix( matrix );
 
   var sub =  new THREE.Mesh( cutgeo );
@@ -996,7 +1002,7 @@ function setupCSGTest() {
   correctDuplicateVertices(csgPrimitiveMesh.geometry);
 
   csgPrimitives.add( csgPrimitiveMesh );
-  setupHackFiller(cubeSize);
+  //setupHackFiller(cubeSize);
 
 }
 
@@ -1509,6 +1515,8 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   geometry.coplanarGroups = coplanarGroups;
   //geometry.colorsNeedUpdate = true;
 
+  // TODO: merge two colinear line segment edges into one if no other edge also connects to the vertex that joins the two
+
   for (var coplanarGroupIndex in coplanarGroups) {
     var perimeter = coplanarGroups[coplanarGroupIndex].perimeter;
     var vertices = [];
@@ -1541,8 +1549,16 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
     }
     perimeter.vertices = vertices;
     console.log('Perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex, perimeter.vertices);
-    for (var vv of vertices) {
-      console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
+    if (coplanarGroupIndex < 100) {
+      var wallShape = new THREE.Geometry();
+      for (var vv of vertices) {
+        wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z));
+        console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
+      }
+      wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vertices[0]].x, geometry.vertices[vertices[0]].y, geometry.vertices[vertices[0]].z));
+      wallShape.scale(1.3,1.3,1.3);
+      var line = new THREE.Line(wallShape, lineMaterialGreen);
+      parent.add(line);
     }
   }
 }

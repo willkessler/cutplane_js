@@ -351,7 +351,8 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 }
 
 function pointsAreEqual(P0, P1) {
-  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
+//  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
+  return (dist3(P0, P1) < .005);
 }
 
 /* From: http://stackoverflow.com/questions/27409074/converting-3d-position-to-2d-screen-position-r69, answer 3 */
@@ -984,7 +985,7 @@ function setupCSGTest() {
 
   // move geometry to where the cut should be
   var matrix = new THREE.Matrix4();
-  matrix.setPosition( new THREE.Vector3(.75, .75, .75) );
+  matrix.setPosition( new THREE.Vector3(.75, .75, 1.25) );
 //  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) ); // this version , sphere does not intersect with cube
   cutgeo.applyMatrix( matrix );
 
@@ -1380,6 +1381,11 @@ function assignVertexFaceHashes(geometry) {
   var theVertex;
   for (var faceIndex in faces) {
     face = geometry.faces[faceIndex];
+    face.vertCopies = {};
+    face.vertCopies.a = vertices[face.a].clone();
+    face.vertCopies.b = vertices[face.b].clone();
+    face.vertCopies.c = vertices[face.c].clone();
+
     for (var vertIndex of [face.a, face.b, face.c]) {
       theVertex = vertices[vertIndex];
       if (!theVertex.hasOwnProperty('inFaces')) {
@@ -1475,8 +1481,9 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
               console.log('vertsInCommon btwn examFace:', examFaceIndex, examFace, 'and adjoinFace:', adjoiningFaceIndex, adjoiningFace);
             }
             if (vertsInCommon.length > 1) {
-              vertsInCommonArray[vertsInCommon.sort().join('_')] = examFaceIndex + '_' + adjoiningFaceIndex;
               perimeter.push({ verts: [vertsInCommon[0], vertsInCommon[1]],  walked: false});
+            } else if (vertsInCommon[0] == 38) {
+              //debugger;
             }
           }
         }
@@ -1485,7 +1492,6 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
     examined[examFaceIndex] = true;
   }
 
-  console.log('vertsInCommonArray:', vertsInCommonArray);
   return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices, normal:coplanarsNormal, perimeter: perimeter });
 }
 
@@ -1498,10 +1504,12 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   var intIndex;
   var coplanarGroupMax;
   var coplanarGroups = [];
-  vertsInCommonArray = {};
   for (var processFaceIndex in faceIndexList) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
+      if (coplanarGroups.length == 4) {
+        debugger;
+      }
       coplanars = findCoplanarAdjacentFaces(processFaceIndex, geometry);
       coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices, normal: coplanars.normal, perimeter: coplanars.perimeter });
       coplanarGroupMax = coplanarGroups.length - 1;
@@ -1514,53 +1522,6 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   }
   geometry.coplanarGroups = coplanarGroups;
   //geometry.colorsNeedUpdate = true;
-
-  // TODO: merge two colinear line segment edges into one if no other edge also connects to the vertex that joins the two
-
-  for (var coplanarGroupIndex in coplanarGroups) {
-    var perimeter = coplanarGroups[coplanarGroupIndex].perimeter;
-    var vertices = [];
-    var ctr = 0;
-    vertices.push(perimeter[0].verts[0]);
-    var nextVert = perimeter[0].verts[1];
-    perimeter[0].walked = true;
-    while (ctr < perimeter.length) {
-      vertices.push(nextVert);
-      for (var scanner in perimeter) {
-        if (!perimeter[scanner].walked) {
-          if ((perimeter[scanner].verts[0] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[1]) == -1)) {
-            perimeter[scanner].walked = true;
-            nextVert = perimeter[scanner].verts[1];
-            console.log('Found nextVert:', nextVert, 'at position 1 at scanner:', scanner); 
-            break;
-          } else if ((perimeter[scanner].verts[1] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[0]) == -1)) {
-            perimeter[scanner].walked = true;
-            nextVert = perimeter[scanner].verts[0];
-            console.log('Found nextVert:', nextVert, 'at position 0 at scanner:', scanner); 
-            break;
-          }
-        }
-      }
-      if (nextVert == vertices[0]) {
-        console.log('Reached first vertex, stopping now.');
-        ctr = perimeter.length - 1;
-      }
-      ctr++;
-    }
-    perimeter.vertices = vertices;
-    console.log('Perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex, perimeter.vertices);
-    if (coplanarGroupIndex < 100) {
-      var wallShape = new THREE.Geometry();
-      for (var vv of vertices) {
-        wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z));
-        console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
-      }
-      wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vertices[0]].x, geometry.vertices[vertices[0]].y, geometry.vertices[vertices[0]].z));
-      wallShape.scale(1.3,1.3,1.3);
-      var line = new THREE.Line(wallShape, lineMaterialGreen);
-      parent.add(line);
-    }
-  }
 }
 
 function assignFacesToAllCoplanarGroups() {
@@ -1579,6 +1540,79 @@ function faceInCutplane(face, vertices) {
            (Math.abs(vertices[face[1]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE) &&
            (Math.abs(vertices[face[2]].z - plane.position.z) < FACE_IN_PLANE_TOLERANCE)
   );
+}
+
+// TODO: merge two colinear line segment edges into one if no other edge also connects to the vertex that joins the two
+function createFacesFromPerimeters() {
+  for (var csgPrimitive of csgPrimitives.children) {
+    var geometry = csgPrimitive.geometry;
+    for (var coplanarGroupIndex in geometry.coplanarGroups) {
+      var perimeter = geometry.coplanarGroups[coplanarGroupIndex].perimeter;
+      var vertices = [];
+      var ctr = 0;
+      vertices.push(perimeter[0].verts[0]);
+      var nextVert = perimeter[0].verts[1];
+      perimeter[0].walked = true;
+      while (ctr < perimeter.length) {
+        vertices.push(nextVert);
+        for (var scanner in perimeter) {
+          if (!perimeter[scanner].walked) {
+            if ((perimeter[scanner].verts[0] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[1]) == -1)) {
+              perimeter[scanner].walked = true;
+              nextVert = perimeter[scanner].verts[1];
+              console.log('Found nextVert:', nextVert, 'at position 1 at scanner:', scanner); 
+              if (perimeter[scanner].verts[1] == 103) {
+                debugger;
+              }
+              break;
+            } else if ((perimeter[scanner].verts[1] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[0]) == -1)) {
+              perimeter[scanner].walked = true;
+              nextVert = perimeter[scanner].verts[0];
+              console.log('Found nextVert:', nextVert, 'at position 0 at scanner:', scanner); 
+              break;
+            }
+          }
+        }
+        if (nextVert == vertices[0]) {
+          console.log('Reached first vertex, stopping now.');
+          ctr = perimeter.length - 1;
+        }
+        ctr++;
+      }
+      perimeter.vertices = vertices;
+      console.log('Perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex, perimeter.vertices);
+      if (coplanarGroupIndex < 100) {
+        var wallShape = new THREE.Geometry();
+        for (var vv of vertices) {
+          wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z));
+          console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
+        }
+        wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vertices[0]].x, geometry.vertices[vertices[0]].y, geometry.vertices[vertices[0]].z));
+        wallShape.scale(1.3,1.3,1.3);
+        var line = new THREE.Line(wallShape, lineMaterialGreen);
+        parent.add(line);
+
+        var spritey = makeTextSprite( coplanarGroupIndex, 
+                                      { fontsize: 48,
+                                        fontface: 'Georgia',
+                                        textColor: {r:255, g:255, b:0, a:1.0}, 
+                                        borderColor: {r:255, g:255, b:255, a:1.0}, 
+                                        backgroundColor: {r:0, g:0, b:0, a:0.8} } );
+        var wallShapeCentroid = new THREE.Vector3(0,0,0);
+        for (var i = 0; i < vertices.length; ++i) {
+          wallShapeCentroid.x += geometry.vertices[vertices[i]].x;
+          wallShapeCentroid.y += geometry.vertices[vertices[i]].y;
+          wallShapeCentroid.z += geometry.vertices[vertices[i]].z;
+        }
+        wallShapeCentroid.x = wallShapeCentroid.x / vertices.length;
+        wallShapeCentroid.y = wallShapeCentroid.y / vertices.length;
+        wallShapeCentroid.z = wallShapeCentroid.z / vertices.length;
+        spritey.position.set(wallShapeCentroid.x,wallShapeCentroid.y, wallShapeCentroid.z);
+        //parent.add(spritey);
+
+      }
+    }
+  }
 }
 
 /* This section line routine works on THREE Mesh objects, but otherwise is the same as the JSModeler version (drawSectionLineJSM) above */
@@ -2142,6 +2176,7 @@ setupCSGTest();
 //setupSimpleTest();
 
 assignFacesToAllCoplanarGroups();
+createFacesFromPerimeters();
 
 render();
 

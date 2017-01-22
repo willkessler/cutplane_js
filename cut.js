@@ -54,7 +54,7 @@ var FACELEN = 3; // triangles by default in meshes
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
-var POINT_ON_POINT_TOLERANCE = 0.005;
+var POINT_ON_POINT_TOLERANCE = 0.087;
 var POINT_ON_LINE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
@@ -351,8 +351,8 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 }
 
 function pointsAreEqual(P0, P1) {
-//  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
-  return (dist3(P0, P1) < .005);
+  return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
+//  return (dist3(P0, P1) < .005);
 }
 
 /* From: http://stackoverflow.com/questions/27409074/converting-3d-position-to-2d-screen-position-r69, answer 3 */
@@ -931,7 +931,7 @@ function setupLabels() {
 }
 
 function setupHackFiller(cubeSize) {
-  var margin = 0.02;
+  var margin = 0.03;
   var hackCube = new THREE.BoxGeometry( cubeSize - margin, cubeSize - margin, cubeSize - margin);
   var hackMaterial = new THREE.MeshBasicMaterial( { 
     color: 0x111111,
@@ -977,17 +977,24 @@ function setupSimpleTest() {
 
 function setupCSGTest() {
 
-  var cubeSize = 1.25;
+  var cubeSize = 1;
   var box = new THREE.Mesh( new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize ) );
   // CSG GEOMETRY
   cube_bsp = new ThreeBSP( box );
-  var cutgeo = new THREE.SphereGeometry( 1.0,8,8 );
+  //var cutgeo = new THREE.SphereGeometry( cubeSize,8,8 );
+
+  var cutDim = cubeSize * .8;
+  var cutgeo = new THREE.CubeGeometry( cubeSize,cubeSize,cubeSize );
 
   // move geometry to where the cut should be
-  var matrix = new THREE.Matrix4();
-  matrix.setPosition( new THREE.Vector3(.75, .75, 1.25) );
+//  var matrix = new THREE.Matrix4();
+//  matrix.setPosition( new THREE.Vector3( -cutDim, cutDim, cutDim ));
+  
 //  matrix.setPosition( new THREE.Vector3(0.25, 0, 1.88) ); // this version , sphere does not intersect with cube
-  cutgeo.applyMatrix( matrix );
+//  cutgeo.applyMatrix( matrix );
+//  cutgeo.rotateX(45 * DEG_TO_RAD);
+  cutgeo.rotateY(45 * DEG_TO_RAD);
+  cutgeo.translate(0,0, cutDim);
 
   var sub =  new THREE.Mesh( cutgeo );
   var substract_bsp  = new ThreeBSP( sub );
@@ -997,11 +1004,13 @@ function setupCSGTest() {
   csgPrimitiveMesh.geometry.computeVertexNormals();
   csgPrimitiveMesh.geometry.rotateY(90* DEG_TO_RAD);
 
-  csgPrimitiveMesh.material = csgPrimitiveMaterialWire;
+  csgPrimitiveMesh.material = csgPrimitiveMaterialFlat;
 
   setupSelectMesh(csgPrimitiveMesh);
   correctDuplicateVertices(csgPrimitiveMesh.geometry);
 
+  var scaleUp = 1;
+  csgPrimitiveMesh.geometry.scale(scaleUp, scaleUp, scaleUp);
   csgPrimitives.add( csgPrimitiveMesh );
   //setupHackFiller(cubeSize);
 
@@ -1248,6 +1257,23 @@ function drawSectionLineJSM() {
   }
 }
 
+// This is not working, we need to actually compare distances between vertices to combine them
+
+function createDuplicateVertexMap(vertices) {
+  var vertexMap = {};
+  vertexMap[0] = 0; // first vertex is nearest to itself
+  var nearest;
+  var numVerts = vertLen = vertices.length;
+  for (var vv = 1; vv < numVerts; ++vv) {
+    nearest = _.find(_.keys(vertexMap), function(key) { return (pointsAreEqual(vertices[key], vertices[vv])); });
+    if (nearest) {
+      vertexMap[vv] = parseInt(nearest);
+    } else {
+      vertexMap[vv] = vv;
+    }
+  }
+  return(vertexMap);
+}
 
 function findDuplicateVertices(vertices) {
   var vertexMapRaw = [];
@@ -1272,11 +1298,11 @@ function findDuplicateVertices(vertices) {
 }
     
 function correctDuplicateVertices(geometry) {
-  var duplicateVertices = findDuplicateVertices(geometry.vertices);
+  var vertexMap = createDuplicateVertexMap(geometry.vertices);
   for (var face of geometry.faces) {
-    face.a = duplicateVertices[face.a];
-    face.b = duplicateVertices[face.b];
-    face.c = duplicateVertices[face.c];
+    face.a = vertexMap[face.a];
+    face.b = vertexMap[face.b];
+    face.c = vertexMap[face.c];
   }
 }
 
@@ -1481,9 +1507,8 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
               console.log('vertsInCommon btwn examFace:', examFaceIndex, examFace, 'and adjoinFace:', adjoiningFaceIndex, adjoiningFace);
             }
             if (vertsInCommon.length > 1) {
+              console.log('Pushed non-coplanar faces with verts in common being:', vertsInCommon);
               perimeter.push({ verts: [vertsInCommon[0], vertsInCommon[1]],  walked: false});
-            } else if (vertsInCommon[0] == 38) {
-              //debugger;
             }
           }
         }
@@ -1493,6 +1518,44 @@ function findCoplanarAdjacentFaces(startFaceIndex, geometry) {
   }
 
   return ({ faces: coplanarAdjacentFaces, vertices: coplanarAdjacentVertices, normal:coplanarsNormal, perimeter: perimeter });
+}
+
+function displayPerimeterEdges(perimeter, vertices) {
+  for (var pp in perimeter) {
+    console.log('Edge:', pp, 'Verts:', perimeter[pp].verts[0], perimeter[pp].verts[1], vertices[perimeter[pp].verts[0]], vertices[perimeter[pp].verts[1]]);
+  }
+}
+
+function displayOriginalPerimeterVertices(perimeterVertices, vertices, addLabels) {
+  for (var vv in perimeterVertices) { 
+    console.log('Original perimeter vertex:', vv, '->', vertices[vv].x, vertices[vv].z);
+    if (addLabels) {
+      var spritey = makeTextSprite( vv, 
+                                    { fontsize: 48,
+                                      fontface: 'Arial',
+                                      textColor: {r:255, g:255, b:0, a:1.0}, 
+                                      borderColor: {r:255, g:255, b:255, a:1.0}, 
+                                      backgroundColor: {r:0, g:0, b:0, a:0.8} } );
+      spritey.position.set(vertices[vv].x, vertices[vv].y - .02, vertices[vv].z);
+//      parent.add(spritey);
+    }
+  }
+}
+
+function displayPerimeterVertices(perimeterVertices, vertices, addLabels) {
+  for (var vv of perimeterVertices) { 
+    console.log('Final perimeter vertex:', vv,'->', vertices[vv].x, vertices[vv].z);
+    if (addLabels) {
+      var spritey = makeTextSprite( vv, 
+                                    { fontsize: 48,
+                                      fontface: 'Arial',
+                                      textColor: {r:255, g:255, b:0, a:1.0}, 
+                                      borderColor: {r:255, g:255, b:255, a:1.0}, 
+                                      backgroundColor: {r:0, g:0, b:0, a:0.8} } );
+      spritey.position.set(vertices[vv].x, vertices[vv].y - .02, vertices[vv].z);
+//      parent.add(spritey);
+    }
+  }
 }
 
 function assignFacesToCoplanarGroups(csgPrimitive) {
@@ -1507,10 +1570,10 @@ function assignFacesToCoplanarGroups(csgPrimitive) {
   for (var processFaceIndex in faceIndexList) {
     intIndex = parseInt(processFaceIndex);
     if (!processedFaces.hasOwnProperty(intIndex)) {
-      if (coplanarGroups.length == 4) {
-        debugger;
+      if (coplanarGroups.length == 3) {
+        // debugger;
       }
-      coplanars = findCoplanarAdjacentFaces(processFaceIndex, geometry);
+      var coplanars = findCoplanarAdjacentFaces(processFaceIndex, geometry);
       coplanarGroups.push({ faces: coplanars.faces, vertices: coplanars.vertices, normal: coplanars.normal, perimeter: coplanars.perimeter });
       coplanarGroupMax = coplanarGroups.length - 1;
       for (var groupedFaceIndex in coplanars.faces) {
@@ -1561,9 +1624,9 @@ function createFacesFromPerimeters() {
               perimeter[scanner].walked = true;
               nextVert = perimeter[scanner].verts[1];
               console.log('Found nextVert:', nextVert, 'at position 1 at scanner:', scanner); 
-              if (perimeter[scanner].verts[1] == 103) {
-                debugger;
-              }
+//              if (perimeter[scanner].verts[1] == 103) {
+//                debugger;
+//              }
               break;
             } else if ((perimeter[scanner].verts[1] == nextVert) && (_.indexOf(_.last(vertices, vertices.length - 1), perimeter[scanner].verts[0]) == -1)) {
               perimeter[scanner].walked = true;
@@ -1579,17 +1642,26 @@ function createFacesFromPerimeters() {
         }
         ctr++;
       }
-      perimeter.vertices = vertices;
-      console.log('Perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex, perimeter.vertices);
-      if (coplanarGroupIndex < 100) {
+      if (true || coplanarGroupIndex == 3) {
+        console.log('Perimeter edges for coplanarGroupIndex:', coplanarGroupIndex);
+        displayPerimeterEdges(perimeter, geometry.vertices);
+        console.log('Original perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex);
+        displayOriginalPerimeterVertices(geometry.coplanarGroups[coplanarGroupIndex].vertices, geometry.vertices, true);
+        perimeter.vertices = vertices;
+        console.log('Ordered perimeter vertices for coplanarGroupIndex:', coplanarGroupIndex);
+        displayPerimeterVertices(perimeter.vertices, geometry.vertices, false);
         var wallShape = new THREE.Geometry();
         for (var vv of vertices) {
           wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z));
           console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
         }
         wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vertices[0]].x, geometry.vertices[vertices[0]].y, geometry.vertices[vertices[0]].z));
-        wallShape.scale(1.3,1.3,1.3);
-        var line = new THREE.Line(wallShape, lineMaterialGreen);
+        var wallScale = 1.2 + Math.random() / 2;;
+        wallShape.scale(wallScale,wallScale,wallScale);
+        var wallLineMaterial = new THREE.LineBasicMaterial({
+          color: new THREE.Color("rgb(" + parseInt(Math.random() * 255) + "," + parseInt(Math.random() * 255) + "," + parseInt(Math.random() * 255) + ")")
+        });
+        var line = new THREE.Line(wallShape, wallLineMaterial);
         parent.add(line);
 
         var spritey = makeTextSprite( coplanarGroupIndex, 
@@ -1609,8 +1681,8 @@ function createFacesFromPerimeters() {
         wallShapeCentroid.z = wallShapeCentroid.z / vertices.length;
         spritey.position.set(wallShapeCentroid.x,wallShapeCentroid.y, wallShapeCentroid.z);
         //parent.add(spritey);
-
       }
+
     }
   }
 }
@@ -2169,12 +2241,13 @@ updateCutplaneProjectionVector();
 setupCrosshair();
 setupPickSquare();
 
-camera.position.set( 0,0, 5);
+camera.position.set( 0, 0, 5);
 //controls.update();
+//setupSimpleTest();
 setupLights();
 setupCSGTest();
-//setupSimpleTest();
 
+improveTriangulation();
 assignFacesToAllCoplanarGroups();
 createFacesFromPerimeters();
 

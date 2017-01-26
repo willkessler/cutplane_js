@@ -734,20 +734,21 @@ function setupPrimitive() {
     );
     poly = new THREE.Line(side, lineMaterial);
     parent.add(poly);
-
-    var cubeSize = 0.15;
-    var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
-    var material = new THREE.MeshPhongMaterial( { 
-      color: 0x0000ff, 
-      side: THREE.DoubleSide, 
-      opacity: 1.0 
-    } );
-    primitive = new THREE.Mesh( geometry, material );
-    //primitive.position.x = 1.7;
-    parent.add(primitive);
-
-
   }
+
+  var cubeSize = 0.15;
+  var geometry = new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize );
+  var material = new THREE.MeshPhongMaterial( { 
+    color: 0x0000ff, 
+    side: THREE.DoubleSide, 
+    opacity: 1.0 
+  } );
+  primitive = new THREE.Mesh( geometry, material );
+  //primitive.position.x = 1.7;
+  //parent.add(primitive);
+
+  primitive_bsp = new ThreeBSP( box );
+  console.log('primitive_bsp:', primitive_bsp);
 
 }
 
@@ -981,10 +982,10 @@ function setupCSGTest() {
   var box = new THREE.Mesh( new THREE.BoxGeometry( cubeSize, cubeSize, cubeSize ) );
   // CSG GEOMETRY
   cube_bsp = new ThreeBSP( box );
-  //var cutgeo = new THREE.SphereGeometry( cubeSize,8,8 );
+  //var cutgeo = new THREE.SphereGeometry( cubeSize,16,8 );
+  var cutgeo = new THREE.CubeGeometry( cubeSize,cubeSize,cubeSize );
 
   var cutDim = cubeSize * .8;
-  var cutgeo = new THREE.CubeGeometry( cubeSize,cubeSize,cubeSize );
 
   // move geometry to where the cut should be
 //  var matrix = new THREE.Matrix4();
@@ -999,6 +1000,7 @@ function setupCSGTest() {
   var sub =  new THREE.Mesh( cutgeo );
   var substract_bsp  = new ThreeBSP( sub );
   var subtract_bsp  = cube_bsp.subtract( substract_bsp );
+  final_subtract_bsp = subtract_bsp;
 
   var csgPrimitiveMesh = subtract_bsp.toMesh(); 
   csgPrimitiveMesh.geometry.computeVertexNormals();
@@ -1044,6 +1046,37 @@ function makeTess() {
   csgPrimitives.add(mesh);
   
 }
+
+function cleanNegZero(negZero) {
+  return((negZero == -0) ? 0 : negZero);
+}
+
+function setupNewCSGTest() {
+  //var a = CSG.cube();
+  var a = CSG.cube({ radius:0.5 });
+  var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
+  var c = a.subtract(b);
+  cGeo = c.toMesh();
+  var mesh = new THREE.Mesh( cGeo, csgPrimitiveMaterialFlat);  
+  parent.add(mesh);
+  var polygons = c.toPolygons();
+  for (var i in polygons) {
+    var poly = polygons[i];
+    //var cleanNormal = { x: cleanNegZero(polygons[i].plane.normal.x), y: cleanNegZero(polygons[i].plane.normal.y), z: cleanNegZero(polygons[i].plane.normal.z) };
+    //console.log(i, '[', cleanNormal.x, cleanNormal.y, cleanNormal.z, '],w:', polygons[i].plane.w);
+    for (var vertex of poly.vertices) {
+      vertex.pos.x += 0.5;
+      vertex.pos.y += 0.5;
+    }
+  }
+  fooPolys = polygons;
+  cGeo = c.toMesh();
+  var mesh = new THREE.Mesh( cGeo, csgPrimitiveMaterialFlat);  
+  parent.add(mesh);
+  console.log(cGeo);
+  
+}
+
 
 
 // --------------------------------------------------------------------------------
@@ -1656,7 +1689,8 @@ function createFacesFromPerimeters() {
           console.log('[', geometry.vertices[vv].x, geometry.vertices[vv].y, geometry.vertices[vv].z, ']');
         }
         wallShape.vertices.push(new THREE.Vector3(geometry.vertices[vertices[0]].x, geometry.vertices[vertices[0]].y, geometry.vertices[vertices[0]].z));
-        var wallScale = 1.2 + Math.random() / 2;;
+        var wallScale = 1.2;
+        // wallscale += Math.random() / 2;
         wallShape.scale(wallScale,wallScale,wallScale);
         var wallLineMaterial = new THREE.LineBasicMaterial({
           color: new THREE.Color("rgb(" + parseInt(Math.random() * 255) + "," + parseInt(Math.random() * 255) + "," + parseInt(Math.random() * 255) + ")")
@@ -2245,7 +2279,8 @@ camera.position.set( 0, 0, 5);
 //controls.update();
 //setupSimpleTest();
 setupLights();
-setupCSGTest();
+//setupCSGTest();
+setupNewCSGTest();
 
 improveTriangulation();
 assignFacesToAllCoplanarGroups();

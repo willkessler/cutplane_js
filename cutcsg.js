@@ -60,7 +60,7 @@ var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 
 var parent;
-var csgPrimitives;
+var csgObjects;
 var plane;
 var crosshair;
 var primitive;
@@ -646,8 +646,8 @@ function cleanNegZero(negZero) {
 }
 
 function setupNewCSGTest() {
-  csgPrimitives = new THREE.Object3D();
-  parent.add(csgPrimitives);
+  csgObjects = new THREE.Object3D();
+  parent.add(csgObjects);
 
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
@@ -667,7 +667,8 @@ function setupNewCSGTest() {
 
   cGeo = c.toMesh();
   var mesh = new THREE.Mesh( cGeo, csgPrimitiveMaterialFlat);  
-  csgPrimitives.add(mesh);
+  mesh.rawCsgObject = c;
+  csgObjects.add(mesh);
   setupSelectMesh(mesh);
   console.log(cGeo);
   
@@ -730,7 +731,7 @@ function drawSectionLineCSG() {
   if (!(movingCutplane || dragging || firstRender) ) {
     return; // don't update the sections if not moving the cutplane
   }
-  if (!csgPrimitives) {
+  if (!csgObjects) {
     return;
   }
 
@@ -744,13 +745,14 @@ function drawSectionLineCSG() {
   cutSections = new THREE.Object3D();
   parent.add(cutSections);
 
-  for (var csgPrimitive of csgPrimitives.children) {
-    csgPrimitive.sectionEdges = {};
-    sectionEdges = csgPrimitive.sectionEdges;
+  for (var csgObject of csgObjects.children) {
+    var rawCsgObject = csgObject.rawCsgObject;
+    csgObject.sectionEdges = {};
+    sectionEdges = csgObject.sectionEdges;
     sectionExists = false;
-    var csgGeometry = csgPrimitive.geometry;
+    var csgGeometry = rawCsgObject.geometry;
     var vertices = csgGeometry.vertices;
-    var faces = csgGeometry.faces;
+    var faces = rawCsgObject.polygons;
     for (var i = 0; i < faces.length; ++i) {
       face = [ faces[i].a, faces[i].b, faces[i].c ];
       if (!faceInCutplane(face, csgGeometry.vertices)) {
@@ -856,7 +858,7 @@ function drawSectionLineCSG() {
 
           cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
           var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
-          sectionPoly.csgPrimitive = csgPrimitive;
+          sectionPoly.csgObject = csgObject;
           cutSections.add(sectionPoly);
 
           cutSection = new THREE.Geometry();
@@ -868,7 +870,7 @@ function drawSectionLineCSG() {
           console.log('Closing loop.');
           console.log('walked:');
           for (var walkedCk in walked) {
-             console.log(walkedCk, csgPrimitive.sectionEdges[walkedCk]);
+             console.log(walkedCk, csgObject.sectionEdges[walkedCk]);
           }
 
           debugger;
@@ -919,11 +921,11 @@ function updatePickSquare() {
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
 
-  if (!csgPrimitives) {
+  if (!csgObjects) {
     return(false);
   }
 
-  for (var csgPrimitive of csgPrimitives.children) {
+  for (var csgPrimitive of csgObjects.children) {
     for (var sectionEdge in csgPrimitive.sectionEdges) {
       coordsArray = [];
       siblings = csgPrimitive.sectionEdges[sectionEdge];
@@ -1139,11 +1141,11 @@ function checkWireFrameToggle() {
     if (useWireFrame == previousUseWireFrame) {
       useWireFrame = !useWireFrame;
       if (useWireFrame) {
-        for (var csgPrimitive of csgPrimitives.children) {
+        for (var csgPrimitive of csgObjects.children) {
           csgPrimitive.material = window.csgPrimitiveMaterialWire;
         }
       } else {
-        for (var csgPrimitive of csgPrimitives.children) {
+        for (var csgPrimitive of csgObjects.children) {
           csgPrimitive.material = window.csgPrimitiveMaterialFlat;
         }
       }

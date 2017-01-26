@@ -660,8 +660,8 @@ function setupNewCSGTest() {
     //var cleanNormal = { x: cleanNegZero(polygons[i].plane.normal.x), y: cleanNegZero(polygons[i].plane.normal.y), z: cleanNegZero(polygons[i].plane.normal.z) };
     //console.log(i, '[', cleanNormal.x, cleanNormal.y, cleanNormal.z, '],w:', polygons[i].plane.w);
     for (var vertex of poly.vertices) {
-      vertex.pos.x += 0.5;
-      vertex.pos.y += 0.5;
+      vertex.pos.x += 0;
+      vertex.pos.y += 0;
     }
   }
 
@@ -672,6 +672,10 @@ function setupNewCSGTest() {
   setupSelectMesh(mesh);
   console.log(cGeo);
   
+  var bsp = new CSG.Node(c.clone().polygons);
+  var testPoint = new CSG.Vector(0.4999,.49,.49);
+  var inside = bsp.pointInside(testPoint);
+  console.log('inside:', inside);
 }
 
 
@@ -1172,7 +1176,7 @@ function render() {
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
-  drawSectionLineCSG();
+//  drawSectionLineCSG();
 
   renderDebugText();
 

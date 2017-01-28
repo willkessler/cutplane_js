@@ -655,27 +655,24 @@ function setupNewCSGTest() {
   var c = a.subtract(b);
 
   var polygons = c.toPolygons();
-  for (var i in polygons) {
-    var poly = polygons[i];
-    //var cleanNormal = { x: cleanNegZero(polygons[i].plane.normal.x), y: cleanNegZero(polygons[i].plane.normal.y), z: cleanNegZero(polygons[i].plane.normal.z) };
-    //console.log(i, '[', cleanNormal.x, cleanNormal.y, cleanNormal.z, '],w:', polygons[i].plane.w);
-    for (var vertex of poly.vertices) {
-      vertex.pos.x += 0;
-      vertex.pos.y += 0;
-    }
-  }
 
   cGeo = c.toMesh();
   var mesh = new THREE.Mesh( cGeo, csgPrimitiveMaterialFlat);  
   mesh.rawCsgObject = c;
+
+  var bsp = new CSG.Node(c.clone().polygons);
+  bsp.translate(0,0,0);
+
+  mesh.bsp = bsp;
+
   csgObjects.add(mesh);
   setupSelectMesh(mesh);
   console.log(cGeo);
   
-  var bsp = new CSG.Node(c.clone().polygons);
-  var testPoint = new CSG.Vector(0.4999,.49,.49);
-  var inside = bsp.pointInside(testPoint);
-  console.log('inside:', inside);
+  //var bsp = new CSG.Node(c.clone().polygons);
+  //var testPoint = new CSG.Vector(0.4999,.49,.49);
+  //var inside = bsp.pointInside(testPoint);
+  //console.log('inside:', inside);
 }
 
 
@@ -1042,6 +1039,12 @@ function updateCrosshair() {
     var prevCrossHair = { x: crosshair.position.x, y: crosshair.position.y };
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
+
+    var mainObj = csgObjects.children[0];
+    var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
+    var inside = mainObj.bsp.pointInside(testPoint);
+    console.log('cursor inside:',inside);
+
     if (pickedItems.length && dragging) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;

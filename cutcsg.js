@@ -96,6 +96,7 @@ var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
 var firstRender = true;
+var polygonHighlight;
 
 var debugTextArray = [];
 var allLabels = [];
@@ -123,6 +124,13 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
 var csgPrimitiveMaterialFlat = new THREE.MeshStandardMaterial ( {
   shading: THREE.FlatShading,
   color:0xffffff,
+  side: THREE.DoubleSide,
+  vertexColors: THREE.FaceColors // you need this if you want to change face colors later
+} );
+
+var polygonHighlightMaterial = new THREE.MeshStandardMaterial ( {
+  shading: THREE.FlatShading,
+  color:0xffff00,
   side: THREE.DoubleSide,
   vertexColors: THREE.FaceColors // you need this if you want to change face colors later
 } );
@@ -748,51 +756,45 @@ function drawSectionLineCSG() {
 
   for (var csgObject of csgObjects.children) {
     var rawCsgObject = csgObject.rawCsgObject;
+    var polygons = rawCsgObject.polygons;
     csgObject.sectionEdges = {};
     sectionEdges = csgObject.sectionEdges;
     sectionExists = false;
     var csgGeometry = rawCsgObject.geometry;
-    var vertices = csgGeometry.vertices;
-    var faces = rawCsgObject.polygons;
-    for (var i = 0; i < faces.length; ++i) {
-      face = [ faces[i].a, faces[i].b, faces[i].c ];
-      if (!faceInCutplane(face, csgGeometry.vertices)) {
-        //console.log('Examining face:', face);
-        facesChecked++;
-        if (facesChecked == 9) {
-          //debugger;
+    var polygons = rawCsgObject.polygons;
+    var polygon, polygonLength, vertices;
+    for (var i = 0; i < polygons.length; ++i) {
+      polygon = polygons[i];
+      vertices = polygon.vertices;
+      polygonLength = vertices.length;
+      intersections = [];
+      /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
+      for (var j = 0; j < polygonLength; ++j) {
+        //console.log('i:',i,'j:',j);
+        P0 = new THREE.Vector3(vertices[j].pos.x,vertices[j].pos.y,vertices[j].pos.z);
+        P1 = new THREE.Vector3(vertices[(j+1) % polygonLength].pos.x,vertices[(j+1) % polygonLength].pos.y,vertices[(j+1) % polygonLength].pos.z);
+        intersection = intersectLineWithPlane(P0, P1, plane.position.z);
+        if (intersection.intersected) {
+          intersections.push(intersection);
+          intersectionsLog[intersection.intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersection.intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES)] = true;
+          //console.log('found intersection: ', intersection.intersectPoint);
         }
-        intersections = [];
-        /* for each face, find one or more places where the plane cuts across the face. add these to the sectionEdges */
-        for (var j = 0; j < FACELEN; ++j) {
-          //console.log('i:',i,'j:',j);
-          P0 = new THREE.Vector3(vertices[face[j]].x,vertices[face[j]].y,vertices[face[j]].z);
-          P1 = new THREE.Vector3(vertices[face[(j + 1) % FACELEN]].x,vertices[face[(j + 1) % FACELEN]].y,vertices[face[(j + 1) % FACELEN]].z);
-          intersection = intersectLineWithPlane(P0, P1, plane.position.z);
-          if (intersection.intersected) {
-            intersections.push(intersection);
-            intersectionsLog[intersection.intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersection.intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES)] = true;
-            //console.log('found intersection: ', intersection.intersectPoint);
+        if (intersections.length == 2) {
+          sectionExists = true;
+          iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+          iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+          finalIKey = iKey2;
+          if (!sectionEdges.hasOwnProperty(iKey1)) {
+            sectionEdges[iKey1] = [];
           }
-          if (intersections.length == 2) {
-            sectionExists = true;
-            iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
-            iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
-            finalIKey = iKey2;
-            if (!sectionEdges.hasOwnProperty(iKey1)) {
-              sectionEdges[iKey1] = [];
-            }
-            sectionEdges[iKey1].push({ point: iKey2, face: faces[i] });
-            if (!sectionEdges.hasOwnProperty(iKey2)) {
-              sectionEdges[iKey2] = [];
-            }
-            sectionEdges[iKey2].push({ point: iKey1, face: faces[i] });
-            sectionEdgesCount++;
-            intersections = [];
+          sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
+          if (!sectionEdges.hasOwnProperty(iKey2)) {
+            sectionEdges[iKey2] = [];
           }
+          sectionEdges[iKey2].push({ point: iKey1, polygon: polygon });
+          sectionEdgesCount++;
+          intersections = [];
         }
-      } else {
-        // console.log('Skipping face:', face);
       }
     }
 
@@ -896,6 +898,28 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
+function createPolygonHighlight(polygon) {
+  if (polygonHighlight) {
+    parent.remove(polygonHighlight);
+    polygonHighlight = undefined;
+  }
+  
+  var geometry = new THREE.Geometry();
+  var vertices = polygon.vertices;
+  for (var vertex of vertices) {
+    geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
+  }
+  var face;
+  for (var i = 2; i < vertices.length; ++i) {
+    face = new THREE.Face3(0, i - 1, i);
+    geometry.faces.push(face);
+  }
+
+  polygonHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
+  parent.add(polygonHighlight);
+
+}
+
 
 function makeCoplanarGroupSelectable(coplanarGroupIndex, csgPrimitive) {
   selectableItem = { 
@@ -926,10 +950,10 @@ function updatePickSquare() {
     return(false);
   }
 
-  for (var csgPrimitive of csgObjects.children) {
-    for (var sectionEdge in csgPrimitive.sectionEdges) {
+  for (var csgObject of csgObjects.children) {
+    for (var sectionEdge in csgObject.sectionEdges) {
       coordsArray = [];
-      siblings = csgPrimitive.sectionEdges[sectionEdge];
+      siblings = csgObject.sectionEdges[sectionEdge];
       coordsRaw = sectionEdge.split('_');
       coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
 
@@ -950,9 +974,9 @@ function updatePickSquare() {
           highlightCenter.x = nearest.nearestPoint.x;
           highlightCenter.y = nearest.nearestPoint.y;
           if (ci == 0) {
-            highlightCenter.face = csgPrimitive.sectionEdges[sectionEdge][0].face;
+            highlightCenter.polygon = csgObject.sectionEdges[sectionEdge][0].polygon;
           } else {
-            highlightCenter.face = csgPrimitive.sectionEdges[sectionEdge][1].face;
+            highlightCenter.polygon = csgObject.sectionEdges[sectionEdge][1].polygon;
           }
         }          
       }
@@ -962,18 +986,17 @@ function updatePickSquare() {
     pickSquare.position.x = highlightCenter.x;
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
-    if (highlightCenter.face) {
-      makeCoplanarGroupSelectable(highlightCenter.face.coplanarGroupIndex, csgPrimitive);
-
-      for (ff in csgPrimitive.geometry.faces) {
-        if (csgPrimitive.geometry.faces[ff] == highlightCenter.face) {
-          addToDebugText(['active face:', 'ID:' + ff + ' V:[' + highlightCenter.face.a + ',' + highlightCenter.face.b + ',' + highlightCenter.face.c + ']']);
-          break;
-        }
-      }
+    if (highlightCenter.polygon) {
+      console.log('we have a highlight face');
+      createPolygonHighlight(highlightCenter.polygon);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
+  if (polygonHighlight) {
+    console.log('cleaning highlight');
+    parent.remove(polygonHighlight);
+    polygonHighlight = undefined;
+  } 
   return(false);
 }
 
@@ -1043,7 +1066,9 @@ function updateCrosshair() {
     var mainObj = csgObjects.children[0];
     var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
     var inside = mainObj.bsp.pointInside(testPoint);
-    console.log('cursor inside:',inside);
+    if (inside) {
+      console.log('cursor inside:',inside);
+    }
 
     if (pickedItems.length && dragging) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
@@ -1054,7 +1079,7 @@ function updateCrosshair() {
             addToDebugText(['Clicking coplanarGroup']);
             var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
             var projectedVector = projectOntoVector(diffVector, pickedItem.item.normal);
-            moveCoplanarGroup(pickedItem.item, pickedItem.csgPrimitive, projectedVector);
+            moveCoplanarGroup(pickedItem.item, pickedItem.csgObject, projectedVector);
             break;
           case 'mesh':
           default:
@@ -1179,7 +1204,7 @@ function render() {
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
-//  drawSectionLineCSG();
+  drawSectionLineCSG();
 
   renderDebugText();
 

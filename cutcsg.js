@@ -751,8 +751,9 @@ function drawSectionLineCSG() {
   if (cutSections) {
     parent.remove(cutSections);
   }
-  cutSections = new THREE.Object3D();
-  parent.add(cutSections);
+  //cutSections = new THREE.Object3D();
+  //parent.add(cutSections);
+  var sectionSegments = new THREE.Geometry();
 
   for (var csgObject of csgObjects.children) {
     var rawCsgObject = csgObject.rawCsgObject;
@@ -781,8 +782,11 @@ function drawSectionLineCSG() {
         }
         if (intersections.length == 2) {
           sectionExists = true;
+
           iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
           iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+          sectionSegments.vertices.push(intersections[0].intersectPoint);
+          sectionSegments.vertices.push(intersections[1].intersectPoint);
           finalIKey = iKey2;
           if (!sectionEdges.hasOwnProperty(iKey1)) {
             sectionEdges[iKey1] = [];
@@ -800,6 +804,8 @@ function drawSectionLineCSG() {
 
     if (sectionExists) {
 
+      cutSections = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
+      parent.add(cutSections);
       // debugging
       for (var seKey in sectionEdges) {
         var childCt = 0;
@@ -862,7 +868,7 @@ function drawSectionLineCSG() {
           cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
           var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
           sectionPoly.csgObject = csgObject;
-          cutSections.add(sectionPoly);
+          //cutSections.add(sectionPoly);
 
           cutSection = new THREE.Geometry();
           if (nextIKey) {
@@ -921,17 +927,6 @@ function createPolygonHighlight(polygon) {
 }
 
 
-function makeCoplanarGroupSelectable(coplanarGroupIndex, csgPrimitive) {
-  selectableItem = { 
-    type:'coplanarGroup', 
-    item: csgPrimitive.geometry.coplanarGroups[coplanarGroupIndex],
-    csgPrimitive: csgPrimitive
-  };
-  for (var faceIndex in selectableItem.item.faces) {
-    csgPrimitive.geometry.faces[faceIndex].color.setHex(0xffff00);
-  }
-  csgPrimitive.geometry.colorsNeedUpdate = true;
-}
 
 function moveCoplanarGroup(coplanarGroup, csgPrimitive, offset) {
   var vertices = csgPrimitive.geometry.vertices;
@@ -1147,22 +1142,19 @@ function updateSelectableItem() {
   }
 
   if (!updatePickSquare()) {
-    if (cutSections && cutSections.children && cutSections.children.length > 0) {
-      var cutSection, csgPrimitive;
-      for (var cutSection of cutSections.children) {
-        csgPrimitive = cutSection.csgPrimitive;
-
-        if (pointInPoly(crosshair.position, cutSection.geometry.vertices)) {
-          // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
-          // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
-          selectableItem = { 
-            type:'mesh', 
-            item: csgPrimitive,
-            selectMesh: csgPrimitive.selectMesh          
-          };
-          selectableItem.selectMesh.position.x = 0;
-          break;
-        }
+    for (csgObject of csgObjects.children) {
+      var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
+      var inside = csgObject.bsp.pointInside(testPoint);
+      if (inside) {
+        // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
+        // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
+        selectableItem = { 
+          type:'mesh', 
+          item: csgObject,
+          selectMesh: csgObject.selectMesh          
+        };
+        selectableItem.selectMesh.position.x = 0;
+        break;
       }
     }
   }      

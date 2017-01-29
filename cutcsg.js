@@ -668,19 +668,14 @@ function setupNewCSGTest() {
   var mesh = new THREE.Mesh( cGeo, csgPrimitiveMaterialFlat);  
   mesh.rawCsgObject = c;
 
-  var bsp = new CSG.Node(c.clone().polygons);
-  bsp.translate(0,0,0);
+  var bsp = new CSG.Node(c.polygons);
 
   mesh.bsp = bsp;
 
   csgObjects.add(mesh);
   setupSelectMesh(mesh);
   console.log(cGeo);
-  
-  //var bsp = new CSG.Node(c.clone().polygons);
-  //var testPoint = new CSG.Vector(0.4999,.49,.49);
-  //var inside = bsp.pointInside(testPoint);
-  //console.log('inside:', inside);
+
 }
 
 
@@ -804,6 +799,7 @@ function drawSectionLineCSG() {
 
     if (sectionExists) {
 
+      sectionSegments.computeLineDistances();
       cutSections = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
       parent.add(cutSections);
       // debugging
@@ -1079,6 +1075,7 @@ function updateCrosshair() {
           case 'mesh':
           default:
             pickedItem.item.geometry.translate(xDiff, yDiff, 0.0);
+            pickedItem.item.bsp.translate(xDiff, yDiff, 0.0);
             break;
         }
       }
@@ -1110,6 +1107,7 @@ function updateCutplane() {
         var zDiff = plane.position.z - prevPlaneZ;
         for (var pickedItem of pickedItems) {
           pickedItem.item.geometry.translate(0,0, zDiff);
+          pickedItem.item.bsp.translate(0,0,zDiff);
         }
         // console.log('Translating object in Z by:', zDiff);
       }

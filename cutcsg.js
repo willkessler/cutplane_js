@@ -188,7 +188,6 @@ function handleKeyDown(event) {
     case 17:
       break; // control key
     case 65: // "A" key, not used
-      improveTriangulation();
       break;
     case 87:
       window.wKeyPressed = true;
@@ -455,11 +454,10 @@ function setupHelp() {
                     '<li><div class="key">Option-mouse</div><div class="hintText">Move cutplane</div></li>' +
                     '<li><div class="key">Cmd-mouse</div><div class="hintText">Rotate view</div></li>' +
                     '<li><div class="key">Shift-Click</div><div class="hintText">Select multiple items</div></li>' +
+                    '<li><div class="key">W</div><div class="hintText">Toggle wireframe display</div></li>' +
                     '<li><div class="key">Mouse-wheel</div><div class="hintText">Zoom</div></li>' +
                     '<li><div class="key">Cmd-Z</div><div class="hintText">Undo last change</div></li>' +
                     '<li><div class="key">Shift-Cmd-Z</div><div class="hintText">Redo last change</div></li>' +
-                    '<li><div class="key">W</div><div class="hintText">Toggle wireframe display</div></li>' +
-                    '<li><div class="key">A</div><div class="hintText">Apply face splitter algo</div></li>' +
                     '</ul>';
   document.body.appendChild(text2);
 
@@ -659,7 +657,10 @@ function setupNewCSGTest() {
 
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
-  var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
+  //var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
+  var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
+  b.translate(0.25,0.5,0.25);
+
   var csgObject = a.subtract(b);
 
   var cGeo = csgObject.toMesh();
@@ -1089,7 +1090,7 @@ function updateCrosshair() {
           case 'mesh':
           default:
             pickedItem.item.mesh.geometry.translate(xDiff, yDiff, 0.0);
-            pickedItem.item.bsp.translate(xDiff, yDiff, 0.0);
+            pickedItem.item.translate(xDiff, yDiff, 0.0);
             break;
         }
       }
@@ -1121,7 +1122,7 @@ function updateCutplane() {
         var zDiff = plane.position.z - prevPlaneZ;
         for (var pickedItem of pickedItems) {
           pickedItem.item.mesh.geometry.translate(0,0, zDiff);
-          pickedItem.item.bsp.translate(0,0,zDiff);
+          pickedItem.item.translate(0,0,zDiff);
         }
         // console.log('Translating object in Z by:', zDiff);
       }

@@ -60,16 +60,10 @@ var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 
 var parent;
-var csgObjects;
 var plane;
 var crosshair;
-var primitive;
-var jsmPrimitive;
-var jsmPrimitiveMesh;
 var cutplaneVectorScreenSpace;
-var cutplaneVector2dStr;
-
-var csgPrimitiveMesh;
+var csgObjects;
 
 var controls;
 var vertices;
@@ -121,7 +115,7 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
   depthFunc: THREE.AlwaysDepth
 });
 
-var csgPrimitiveMaterialFlat = new THREE.MeshStandardMaterial ( {
+var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
   shading: THREE.FlatShading,
   color:0xffffff,
   side: THREE.DoubleSide,
@@ -136,7 +130,7 @@ var polygonHighlightMaterial = new THREE.MeshStandardMaterial ( {
 } );
 
 // http://stackoverflow.com/questions/20153705/three-js-wireframe-material-all-polygons-vs-just-edges
-var csgPrimitiveMaterialWire = new THREE.MeshBasicMaterial ( {
+var csgObjectMaterialWire = new THREE.MeshBasicMaterial ( {
   color:0xffffff,
   wireframe: true
 } );
@@ -637,9 +631,9 @@ function setupPickSquare() {
   parent.add(pickSquare);
 }
 
-function setupSelectMesh(csgPrimitiveMesh) {
-  var selectMesh = csgPrimitiveMesh.clone();
-  csgPrimitiveMesh.selectMesh = selectMesh;
+function setupSelectMesh(csgObject) {
+  var selectMesh = csgObject.mesh.clone();
+  csgObject.selectMesh = selectMesh;
   selectMeshMaterialUnselected = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.BackSide } );
   selectMeshMaterialSelected = new THREE.MeshBasicMaterial( { color: 0xff0000, side: THREE.BackSide } );
   selectMesh.material = selectMeshMaterialUnselected;
@@ -654,27 +648,20 @@ function cleanNegZero(negZero) {
 }
 
 function setupNewCSGTest() {
-  csgObjects = new THREE.Object3D();
-  parent.add(csgObjects);
+  csgObjects = [];
 
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
   var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
-  var c = a.subtract(b);
+  var csgObject = a.subtract(b);
 
-  var polygons = c.toPolygons();
+  var cGeo = csgObject.toMesh();
+  csgObject.bsp = new CSG.Node(csgObject.polygons);
+  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  parent.add(csgObject.mesh);
 
-  cGeo = c.toMesh();
-  var mesh = new THREE.Mesh( cGeo, csgPrimitiveMaterialFlat);  
-  mesh.rawCsgObject = c;
-
-  var bsp = new CSG.Node(c.polygons);
-
-  mesh.bsp = bsp;
-
-  csgObjects.add(mesh);
-  setupSelectMesh(mesh);
-  console.log(cGeo);
+  csgObjects.push(csgObject);
+  setupSelectMesh(csgObject);
 
 }
 
@@ -698,7 +685,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         pickedItems.push(selectableItem);
         dragging = true;
         break;
-      case 'coplanarGroup':
+      case 'polygon':
         pickedItems.push(selectableItem);
         dragging = true;
         break;
@@ -750,14 +737,13 @@ function drawSectionLineCSG() {
   //parent.add(cutSections);
   var sectionSegments = new THREE.Geometry();
 
-  for (var csgObject of csgObjects.children) {
-    var rawCsgObject = csgObject.rawCsgObject;
-    var polygons = rawCsgObject.polygons;
+  for (var csgObject of csgObjects) {
+    var polygons = csgObject.polygons;
     csgObject.sectionEdges = {};
     sectionEdges = csgObject.sectionEdges;
     sectionExists = false;
-    var csgGeometry = rawCsgObject.geometry;
-    var polygons = rawCsgObject.polygons;
+    var csgGeometry = csgObject.mesh.geometry;
+    var polygons = csgObject.polygons;
     var polygon, polygonLength, vertices;
     for (var i = 0; i < polygons.length; ++i) {
       polygon = polygons[i];
@@ -802,16 +788,10 @@ function drawSectionLineCSG() {
       sectionSegments.computeLineDistances();
       cutSections = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
       parent.add(cutSections);
-      // debugging
-      for (var seKey in sectionEdges) {
-        var childCt = 0;
-        for (var seChild in sectionEdges[seKey]) {
-          childCt++;
-        }
-        if (childCt < 2) {
-          console.log('Less than two children:', seKey);
-        }
-      }
+
+      //
+      // We can now get rid of all the rest of this since we're not making section loops any more
+      //
 
       /* Now start at final iKey on the sectionEdges array, and walk it to build up section lines */
       var walked = {};
@@ -900,7 +880,7 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
-function createPolygonHighlight(polygon) {
+function createPolygonHighlight(polygon, csgObject) {
   if (polygonHighlight) {
     parent.remove(polygonHighlight);
     polygonHighlight = undefined;
@@ -920,20 +900,33 @@ function createPolygonHighlight(polygon) {
   polygonHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
   parent.add(polygonHighlight);
 
+  selectableItem = { 
+    type:'polygon', 
+    item: polygon,
+    csgObject: csgObject
+  };
+
 }
 
-
-
-function moveCoplanarGroup(coplanarGroup, csgPrimitive, offset) {
-  var vertices = csgPrimitive.geometry.vertices;
-  for (var vertIndex in coplanarGroup.vertices) {
-    vertices[vertIndex].addVectors(vertices[vertIndex],offset);
+function movePolygon(polygon, csgObject, offset) {
+  var vertices = polygon.vertices;
+  var vertex;
+  for (var vertIndex in vertices) {
+    vertex = vertices[vertIndex];
+    vertex.pos.x += offset.x;
+    vertex.pos.y += offset.y;
+    vertex.pos.z += offset.z;
   }
-  csgPrimitive.geometry.elementsNeedUpdate = true;
+  polygon.setBoundingBox();
+  parent.remove(csgObject.mesh);
+
+  var cGeo = csgObject.toMesh();
+  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  parent.add(csgObject.mesh);
+
 }
 
 function updatePickSquare() {
-  //debugger;
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
 
@@ -941,7 +934,7 @@ function updatePickSquare() {
     return(false);
   }
 
-  for (var csgObject of csgObjects.children) {
+  for (var csgObject of csgObjects) {
     for (var sectionEdge in csgObject.sectionEdges) {
       coordsArray = [];
       siblings = csgObject.sectionEdges[sectionEdge];
@@ -979,7 +972,7 @@ function updatePickSquare() {
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.polygon) {
       console.log('we have a highlight face');
-      createPolygonHighlight(highlightCenter.polygon);
+      createPolygonHighlight(highlightCenter.polygon, csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
@@ -1001,8 +994,6 @@ function updateCutplaneProjectionVector() {
   cutplaneVectorScreenSpace = new THREE.Vector2(cutplaneNormal2D_2.x - cutplaneNormal2D_1.x, 
                                                 cutplaneNormal2D_2.y - cutplaneNormal2D_1.y );
   cutplaneVectorScreenSpace.normalize();
-  cutplaneVector2dStr = '[' + cutplaneNormal.x + ',' + cutplaneNormal.y + ',' + cutplaneNormal.z + ' : ' + 
-                        cutplaneVectorScreenSpace.x + ',' + cutplaneVectorScreenSpace.y + ']';
 }
 
 function updateRoomView() {
@@ -1054,27 +1045,21 @@ function updateCrosshair() {
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
-    var mainObj = csgObjects.children[0];
-    var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
-    var inside = mainObj.bsp.pointInside(testPoint);
-    if (inside) {
-      console.log('cursor inside:',inside);
-    }
-
     if (pickedItems.length && dragging) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
-          case 'coplanarGroup':
+          case 'polygon':
             addToDebugText(['Clicking coplanarGroup']);
             var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
-            var projectedVector = projectOntoVector(diffVector, pickedItem.item.normal);
-            moveCoplanarGroup(pickedItem.item, pickedItem.csgObject, projectedVector);
+            var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
+            var projectedVector = projectOntoVector(diffVector, planeVector);
+            movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
             break;
           case 'mesh':
           default:
-            pickedItem.item.geometry.translate(xDiff, yDiff, 0.0);
+            pickedItem.item.mesh.geometry.translate(xDiff, yDiff, 0.0);
             pickedItem.item.bsp.translate(xDiff, yDiff, 0.0);
             break;
         }
@@ -1106,7 +1091,7 @@ function updateCutplane() {
       if (dragging) {
         var zDiff = plane.position.z - prevPlaneZ;
         for (var pickedItem of pickedItems) {
-          pickedItem.item.geometry.translate(0,0, zDiff);
+          pickedItem.item.mesh.geometry.translate(0,0, zDiff);
           pickedItem.item.bsp.translate(0,0,zDiff);
         }
         // console.log('Translating object in Z by:', zDiff);
@@ -1130,22 +1115,19 @@ function updateSelectableItem() {
     if (selectableItem.type == 'mesh') {
       selectMesh = selectableItem.selectMesh;
       selectMesh.position.x = 10000;
-    } else if (selectableItem.type == 'coplanarGroup') {
-      for (var faceIndex in selectableItem.item.faces) {
-        selectableItem.csgPrimitive.geometry.faces[faceIndex].color.setHex(0xffffff);
-      }
-      selectableItem.csgPrimitive.geometry.colorsNeedUpdate = true;
+    } else if (selectableItem.type == 'polygon') {
+      // do nothing
     }
     selectableItem = { type: 'none' };
   }
 
   if (!updatePickSquare()) {
-    for (csgObject of csgObjects.children) {
+    for (csgObject of csgObjects) {
       var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
       var inside = csgObject.bsp.pointInside(testPoint);
       if (inside) {
         // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
-        // now we can use csgPrimitiveMesh.translate(x,y,z) to drag it around
+        // now we can use csgObjectMesh.translate(x,y,z) to drag it around
         selectableItem = { 
           type:'mesh', 
           item: csgObject,
@@ -1163,12 +1145,12 @@ function checkWireFrameToggle() {
     if (useWireFrame == previousUseWireFrame) {
       useWireFrame = !useWireFrame;
       if (useWireFrame) {
-        for (var csgPrimitive of csgObjects.children) {
-          csgPrimitive.material = window.csgPrimitiveMaterialWire;
+        for (var csgObject of csgObjects) {
+          csgObject.mesh.material = window.csgObjectMaterialWire;
         }
       } else {
-        for (var csgPrimitive of csgObjects.children) {
-          csgPrimitive.material = window.csgPrimitiveMaterialFlat;
+        for (var csgObject of csgObjects) {
+          csgObject.mesh.material = window.csgObjectMaterialFlat;
         }
       }
       console.log('useWireFrame:', useWireFrame);

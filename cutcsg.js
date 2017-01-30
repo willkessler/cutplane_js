@@ -29,6 +29,7 @@
 
 //  [ ] If looking at room from behind, reverse the cursor controls
 //  [ ] Use mousewheel to zoom in and out
+//  [ ] Scale boxes to resize objects in any direction, when object is picked
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 //  [ ] Reinstate shadow on the ground (use lights?)
@@ -519,8 +520,6 @@ function setupCutplane() {
   planeBorder.position.z = plane.position.z;
   plane.add(planeBorder);
 
-  //plane.position.z = -0.22;
-  plane.position.z = 0.33;
   parent.add(plane);
 }
 
@@ -652,9 +651,10 @@ function cleanNegZero(negZero) {
   return((negZero == -0) ? 0 : negZero);
 }
 
-function setupNewCSGTest() {
+function setupCSG() {
   csgObjects = [];
 
+/*
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
   //var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
@@ -662,10 +662,40 @@ function setupNewCSGTest() {
   b.translate(0.25,0.5,0.25);
 
   var csgObject = a.subtract(b);
-
   var cGeo = csgObject.toMesh();
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  csgObject.uuid = generateUuid();
+  parent.add(csgObject.mesh);
+
+  csgObjects.push(csgObject);
+  setupSelectMesh(csgObject);
+*/
+
+  var d = CSG.cube( { radius: 0.25 });
+  var e = d.clone();
+  e.translate(.20,.5,0);
+  var csgObject = d;
+  console.log('csgObject:', csgObject);
+  
+  cGeo = csgObject.toMesh();
+  csgObject.bsp = new CSG.Node(csgObject.polygons);
+  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  csgObject.mesh.geometry.computeFaceNormals();
+  csgObject.uuid = generateUuid();
+  parent.add(csgObject.mesh);
+
+  csgObjects.push(csgObject);
+  setupSelectMesh(csgObject);
+
+  csgObject = CSG.extrudeFromFace(csgObjects[0].mesh.geometry.faces[1], csgObjects[0].mesh.geometry, 0.2)
+  console.log('extrusion:', csgObject);
+  csgObject.translate(0,.25,0.5);
+
+  cGeo = csgObject.toMesh();
+  csgObject.bsp = new CSG.Node(csgObject.polygons);
+  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  csgObject.mesh.geometry.computeFaceNormals();
   csgObject.uuid = generateUuid();
   parent.add(csgObject.mesh);
 
@@ -1234,7 +1264,7 @@ setupPickSquare();
 
 camera.position.set( 0, 0, 5);
 setupLights();
-setupNewCSGTest();
+setupCSG();
 
 render();
 

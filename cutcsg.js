@@ -28,23 +28,22 @@
 //  [X] Stay on the face normal when you drag the face
 
 //  [ ] If looking at room from behind, reverse the cursor controls
-//  [ ] Reinstate shadow on the ground (use lights?)
+//  [ ] Use mousewheel to zoom in and out
+//  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
-
+//  [ ] Reinstate shadow on the ground (use lights?)
+//  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
+//  [ ] restore the tool chests
 
 //  [ ] Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
 //      pay attention to the direction of the vector to make sure you're taking the inside angle every time. Alternatively, use raycasting approach.
 //  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] Separately compute faces that are in the plane and highlight them differently
 //  [ ] Fix section line bug where sometimes it will jump over the surface
-//  [ ] restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] load/save models to cloud
 //  [ ] restore booleans manipulations within the UI cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
-//  [ ] use mousewheel to zoom in and out
 //  [ ] cmd-z to undo drags
-//  [ ] fix the coplanar faces issues on the CSG boolean results
-//  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
-//  [ ] restore the tool chests
+//  [X] Fix the coplanar faces issues on the CSG boolean results
 
 // http://jsfiddle.net/hbt9c/317/
 
@@ -431,6 +430,14 @@ function makeTextSprite( message, parameters )
   return sprite;  
 }
 
+// cf http://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript
+function generateUuid() {
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
+
 /* Old not working, From stemkoski https://github.com/stemkoski/stemkoski.github.com/blob/master/Three.js/Sprite-Text-Labels.html */
 
 // --------------------------------------------------------------------------------
@@ -658,6 +665,7 @@ function setupNewCSGTest() {
   var cGeo = csgObject.toMesh();
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  csgObject.uuid = generateUuid();
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
@@ -909,20 +917,41 @@ function createPolygonHighlight(polygon, csgObject) {
 }
 
 function movePolygon(polygon, csgObject, offset) {
-  var vertices = polygon.vertices;
-  var vertex;
-  for (var vertIndex in vertices) {
-    vertex = vertices[vertIndex];
+  var csgVertices = polygon.vertices;
+  var vertices = csgObject.mesh.geometry.vertices;
+  var vertex, vertIndex, face;
+  for (vertIndex in csgVertices) {
+    vertex = csgVertices[vertIndex];
     vertex.pos.x += offset.x;
     vertex.pos.y += offset.y;
     vertex.pos.z += offset.z;
   }
-  polygon.setBoundingBox();
+  var allVertexIndexes = {};
+  for (face of polygon.faces) {
+    allVertexIndexes[face.a] = true;
+    allVertexIndexes[face.b] = true;
+    allVertexIndexes[face.c] = true;
+  }
+  for (vertIndex in allVertexIndexes) {
+    vertices[vertIndex].x += offset.x;
+    vertices[vertIndex].y += offset.y;
+    vertices[vertIndex].z += offset.z;
+  }
+
+  csgObject.mesh.geometry.elementsNeedUpdate = true;
+/*
+  var uuid = csgObject.uuid;
   parent.remove(csgObject.mesh);
 
-  var cGeo = csgObject.toMesh();
-  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-  parent.add(csgObject.mesh);
+  var replacementCsgObject = new CSG.fromPolygons(csgObject.polygons);
+  replacementCsgObject.setBoundingBoxes();
+  var masterIndex = _.findIndex(csgObjects, function(check) { return (check.uuid == uuid); });
+  csgObjects[masterIndex] = replacementCsgObject;
+
+  var cGeo = replacementCsgObject.toMesh();
+  replacementCsgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  parent.add(replacementCsgObject.mesh);
+*/
 
 }
 
@@ -1051,7 +1080,7 @@ function updateCrosshair() {
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
-            addToDebugText(['Clicking coplanarGroup']);
+            addToDebugText(['Clicking face']);
             var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
             var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
             var projectedVector = projectOntoVector(diffVector, planeVector);

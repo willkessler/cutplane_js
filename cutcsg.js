@@ -647,10 +647,6 @@ function setupSelectMesh(csgObject) {
 }
 
 
-function cleanNegZero(negZero) {
-  return((negZero == -0) ? 0 : negZero);
-}
-
 function setupCSG() {
   csgObjects = [];
 
@@ -688,11 +684,12 @@ function setupCSG() {
   csgObjects.push(csgObject);
   setupSelectMesh(csgObject);
 
-  csgObject = CSG.extrudeFromFace(csgObjects[0].mesh.geometry.faces[1], csgObjects[0].mesh.geometry, 0.2)
+  csgObject = csgObject.extrudeFromPolygon(csgObject.polygons[5], 0.5);
   console.log('extrusion:', csgObject);
-  csgObject.translate(0,.25,0.5);
+  //csgObject.translate(0,1,0);
 
   cGeo = csgObject.toMesh();
+  
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
   csgObject.mesh.geometry.computeFaceNormals();
@@ -1184,17 +1181,19 @@ function updateSelectableItem() {
   if (!updatePickSquare()) {
     for (csgObject of csgObjects) {
       var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
-      var inside = csgObject.bsp.pointInside(testPoint);
-      if (inside) {
-        // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
-        // now we can use csgObjectMesh.translate(x,y,z) to drag it around
-        selectableItem = { 
-          type:'mesh', 
-          item: csgObject,
-          selectMesh: csgObject.selectMesh          
-        };
-        selectableItem.selectMesh.position.x = 0;
-        break;
+      if (csgObject.bsp) {
+        var inside = csgObject.bsp.pointInside(testPoint);
+        if (inside) {
+          // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
+          // now we can use csgObjectMesh.translate(x,y,z) to drag it around
+          selectableItem = { 
+            type:'mesh', 
+            item: csgObject,
+            selectMesh: csgObject.selectMesh          
+          };
+          selectableItem.selectMesh.position.x = 0;
+          break;
+        }
       }
     }
   }      

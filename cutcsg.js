@@ -686,7 +686,7 @@ function setupCSG() {
 
   csgObject = csgObject.extrudeFromPolygon(csgObject.polygons[5], 0.5);
   console.log('extrusion:', csgObject);
-  //csgObject.translate(0,1,0);
+  csgObject.translate(0,1,0);
 
   cGeo = csgObject.toMesh();
   
@@ -753,6 +753,7 @@ function drawSectionLineCSG() {
   var face;
   var sectionEdges;
   var sectionEdgesCount = 0;
+  var segmentGroup;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
   if (!(movingCutplane || dragging || firstRender) ) {
@@ -769,11 +770,12 @@ function drawSectionLineCSG() {
   if (cutSections) {
     parent.remove(cutSections);
   }
-  //cutSections = new THREE.Object3D();
-  //parent.add(cutSections);
-  var sectionSegments = new THREE.Geometry();
+  cutSections = new THREE.Object3D();
+  parent.add(cutSections);
+
 
   for (var csgObject of csgObjects) {
+    var sectionSegments = new THREE.Geometry();
     var polygons = csgObject.polygons;
     csgObject.sectionEdges = {};
     sectionEdges = csgObject.sectionEdges;
@@ -822,8 +824,8 @@ function drawSectionLineCSG() {
     if (sectionExists) {
 
       sectionSegments.computeLineDistances();
-      cutSections = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
-      parent.add(cutSections);
+      segmentGroup = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
+      cutSections.add(segmentGroup);
 
       //
       // We can now get rid of all the rest of this since we're not making section loops any more

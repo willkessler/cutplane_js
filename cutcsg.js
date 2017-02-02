@@ -654,6 +654,7 @@ function setupCSG() {
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
   csgObject.assignUuids();
   csgObject.createCoplanarGroups();
+  console.log('coplanar groups:', csgObject.coplanarGroups);
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);

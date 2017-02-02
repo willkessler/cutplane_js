@@ -107,8 +107,8 @@ var lineMaterialGreen = new THREE.LineBasicMaterial({
 
 var sectionMaterialDashed = new THREE.LineDashedMaterial({
   color: 0xffff00,
-  dashSize: .02,
-  gapSize: .02,
+  dashSize: .04,
+  gapSize: .03,
   linewidth: 1,
   depthTest: false, // so that we can always see the section line
   depthWrite: false,
@@ -430,14 +430,6 @@ function makeTextSprite( message, parameters )
   return sprite;  
 }
 
-// cf http://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript
-function generateUuid() {
-  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
-    return v.toString(16);
-  });
-}
-
 /* Old not working, From stemkoski https://github.com/stemkoski/stemkoski.github.com/blob/master/Three.js/Sprite-Text-Labels.html */
 
 // --------------------------------------------------------------------------------
@@ -650,24 +642,26 @@ function setupSelectMesh(csgObject) {
 function setupCSG() {
   csgObjects = [];
 
-/*
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
-  //var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
-  var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
-  b.translate(0.25,0.5,0.25);
+  var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
+  //var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
+  //b.translate(0.25,0.5,0.25);
 
   var csgObject = a.subtract(b);
   var cGeo = csgObject.toMesh();
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-  csgObject.uuid = generateUuid();
+  csgObject.assignUuids();
+  csgObject.createCoplanarGroups();
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
   setupSelectMesh(csgObject);
-*/
 
+  
+
+  /*
   var d = CSG.cube( { radius: 0.25 });
   var e = d.clone();
   e.translate(.20,.5,0);
@@ -678,13 +672,14 @@ function setupCSG() {
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
   csgObject.mesh.geometry.computeFaceNormals();
-  csgObject.uuid = generateUuid();
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
   setupSelectMesh(csgObject);
+  */
 
-  csgObject = csgObject.extrudeFromPolygon(csgObject.polygons[5], 0.5);
+
+  csgObject = csgObject.extrudeFromPolygon(csgObject.polygons[7], 0.5);
   console.log('extrusion:', csgObject);
   csgObject.translate(0,1,0);
 
@@ -693,7 +688,6 @@ function setupCSG() {
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
   csgObject.mesh.geometry.computeFaceNormals();
-  csgObject.uuid = generateUuid();
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
@@ -706,6 +700,7 @@ function setupCSG() {
 // --------------------------------------------------------------------------------
 // Main interaction functions
 // --------------------------------------------------------------------------------
+
 
 
 // Shiftkey: http://stackoverflow.com/questions/3781142/jquery-or-javascript-how-determine-if-shift-key-being-pressed-while-clicking-an
@@ -822,16 +817,17 @@ function drawSectionLineCSG() {
     }
 
     if (sectionExists) {
-
       sectionSegments.computeLineDistances();
       segmentGroup = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
       cutSections.add(segmentGroup);
+    }
 
+/*
       //
       // We can now get rid of all the rest of this since we're not making section loops any more
       //
 
-      /* Now start at final iKey on the sectionEdges array, and walk it to build up section lines */
+      // Now start at final iKey on the sectionEdges array, and walk it to build up section lines 
       var walked = {};
       var numWalked = 0;
       var currentIKey = finalIKey, nextIKey;
@@ -859,11 +855,11 @@ function drawSectionLineCSG() {
             break;
           }
         }
-        /* If we got through one loop, we will not be able to advance. Scan through the section edges to find an unwalked starting point. */
+        // If we got through one loop, we will not be able to advance. Scan through the section edges to find an unwalked starting point. 
         endedCurrentLoop = false;
         if (nextIKey == undefined) {
           endedCurrentLoop = true;
-          /* Find a candidate to start a new loop, if we can. */
+          // Find a candidate to start a new loop, if we can.
           for (var seKey in sectionEdges) {
             if (!walked.hasOwnProperty(seKey)) {
               nextIKey = seKey;
@@ -872,7 +868,7 @@ function drawSectionLineCSG() {
           }
         }
 
-        /* To close the loop, add back the startIKey. */
+        // To close the loop, add back the startIKey. 
         if (endedCurrentLoop) {
           coordsRaw = startLoopIKey.split('_');
           coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
@@ -889,23 +885,14 @@ function drawSectionLineCSG() {
             startLoopIKey = nextIKey;
           }
 
-          /*
-          console.log('Closing loop.');
-          console.log('walked:');
-          for (var walkedCk in walked) {
-             console.log(walkedCk, csgObject.sectionEdges[walkedCk]);
-          }
-
-          debugger;
-          */
-
         }
 
-        /* Advance from here on current loop or newly started loop */
+        // Advance from here on current loop or newly started loop 
         currentIKey = nextIKey;
       }
-
     }
+  */
+
   }
 }
 
@@ -969,19 +956,6 @@ function movePolygon(polygon, csgObject, offset) {
   }
 
   csgObject.mesh.geometry.elementsNeedUpdate = true;
-/*
-  var uuid = csgObject.uuid;
-  parent.remove(csgObject.mesh);
-
-  var replacementCsgObject = new CSG.fromPolygons(csgObject.polygons);
-  replacementCsgObject.setBoundingBoxes();
-  var masterIndex = _.findIndex(csgObjects, function(check) { return (check.uuid == uuid); });
-  csgObjects[masterIndex] = replacementCsgObject;
-
-  var cGeo = replacementCsgObject.toMesh();
-  replacementCsgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-  parent.add(replacementCsgObject.mesh);
-*/
 
 }
 

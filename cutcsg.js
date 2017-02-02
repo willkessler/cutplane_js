@@ -28,13 +28,14 @@
 //  [X] Stay on the face normal when you drag the face
 
 //  [ ] If looking at room from behind, reverse the cursor controls
+//  [ ] Slice objects in half at cutplane
 //  [ ] Use mousewheel to zoom in and out
 //  [ ] Scale boxes to resize objects in any direction, when object is picked
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 //  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
-//  [ ] restore the tool chests
+//  [ ] restore the tool chests with colors (toggle colors on/off)
 
 //  [ ] Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
 //      pay attention to the direction of the vector to make sure you're taking the inside angle every time. Alternatively, use raycasting approach.
@@ -292,7 +293,6 @@ function pointInPoly (point, poly) {
   // This is designed to use polygons where first vertex does not repeat at the end of the polygon which is what you get with a 
   // closed polygon from THREE.js vertices array.
   // So we pass a shorter polygon length in.
-  //debugger;
   var polyLength = poly.length;
   var inside = false;
   var i = 0;
@@ -680,6 +680,7 @@ function setupCSG() {
   */
 
 
+/*
   csgObject = csgObject.extrudeFromPolygon(csgObject.polygons[7], 0.5);
   console.log('extrusion:', csgObject);
   csgObject.translate(0,1,0);
@@ -693,6 +694,7 @@ function setupCSG() {
 
   csgObjects.push(csgObject);
   setupSelectMesh(csgObject);
+*/
 
 }
 
@@ -794,25 +796,26 @@ function drawSectionLineCSG() {
           intersections.push(intersection);
           intersectionsLog[intersection.intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersection.intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES)] = true;
           //console.log('found intersection: ', intersection.intersectPoint);
-        }
-        if (intersections.length == 2) {
-          sectionExists = true;
 
-          iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
-          iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
-          sectionSegments.vertices.push(intersections[0].intersectPoint);
-          sectionSegments.vertices.push(intersections[1].intersectPoint);
-          finalIKey = iKey2;
-          if (!sectionEdges.hasOwnProperty(iKey1)) {
-            sectionEdges[iKey1] = [];
+          if (intersections.length == 2) {
+            sectionExists = true;
+
+            iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+            iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+            sectionSegments.vertices.push(intersections[0].intersectPoint);
+            sectionSegments.vertices.push(intersections[1].intersectPoint);
+            finalIKey = iKey2;
+            if (!sectionEdges.hasOwnProperty(iKey1)) {
+              sectionEdges[iKey1] = [];
+            }
+            sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
+            if (!sectionEdges.hasOwnProperty(iKey2)) {
+              sectionEdges[iKey2] = [];
+            }
+            sectionEdges[iKey2].push({ point: iKey1, polygon: polygon });
+            sectionEdgesCount++;
+            intersections = [];
           }
-          sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
-          if (!sectionEdges.hasOwnProperty(iKey2)) {
-            sectionEdges[iKey2] = [];
-          }
-          sectionEdges[iKey2].push({ point: iKey1, polygon: polygon });
-          sectionEdgesCount++;
-          intersections = [];
         }
       }
     }
@@ -928,6 +931,7 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
   }
 
   coplanarGroupHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
+  coplanarGroupHighlight.geometry.elementsNeedUpdate = true;
   parent.add(coplanarGroupHighlight);
 
   selectableItem = { 
@@ -1000,6 +1004,7 @@ function updatePickSquare() {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
           } else {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][1].polygon.coplanarGroup;
+            console.log('highlightCenter.coplanarGroup:',highlightCenter.coplanarGroup);
           }
         }          
       }

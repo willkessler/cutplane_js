@@ -26,6 +26,8 @@
 //  [X] Investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
 //  [X] Check if the CSG lib is in ES6. Yes, it is, but it doesn't make much difference to the resulting coplanar face mess.
 //  [X] Stay on the face normal when you drag the face
+//  [ ] Make extrusion for polygon dragging and drag the whole coplanar group
+//  [ ] Make it possible to select polygons that are flush in the cutplane
 
 //  [ ] If looking at room from behind, reverse the cursor controls
 //  [ ] Slice objects in half at cutplane

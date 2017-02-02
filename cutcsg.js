@@ -90,7 +90,7 @@ var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
 var firstRender = true;
-var polygonHighlight;
+var coplanarGroupHighlight;
 
 var debugTextArray = [];
 var allLabels = [];
@@ -906,56 +906,61 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
-function createPolygonHighlight(polygon, csgObject) {
-  if (polygonHighlight) {
-    parent.remove(polygonHighlight);
-    polygonHighlight = undefined;
+function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
+  if (coplanarGroupHighlight) {
+    parent.remove(coplanarGroupHighlight);
+    coplanarGroupHighlight = undefined;
   }
   
   var geometry = new THREE.Geometry();
-  var vertices = polygon.vertices;
-  for (var vertex of vertices) {
-    geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
-  }
-  var face;
-  for (var i = 2; i < vertices.length; ++i) {
-    face = new THREE.Face3(0, i - 1, i);
-    geometry.faces.push(face);
+  var base = 0;
+  for (var polygon of coplanarGroup) {
+    var vertices = polygon.vertices;
+    for (var vertex of vertices) {
+      geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
+    }
+    var face;
+    for (var i = 2; i < vertices.length; ++i) {
+      face = new THREE.Face3(base, base + i - 1, base + i);
+      geometry.faces.push(face);
+    }
+    base += polygon.vertices.length;
   }
 
-  polygonHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
-  parent.add(polygonHighlight);
+  coplanarGroupHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
+  parent.add(coplanarGroupHighlight);
 
   selectableItem = { 
-    type:'polygon', 
-    item: polygon,
+    type:'coplanarGroup', 
+    item: coplanarGroup,
     csgObject: csgObject
   };
 
 }
 
-function movePolygon(polygon, csgObject, offset) {
-  var csgVertices = polygon.vertices;
-  var vertices = csgObject.mesh.geometry.vertices;
-  var vertex, vertIndex, face;
-  for (vertIndex in csgVertices) {
-    vertex = csgVertices[vertIndex];
-    vertex.pos.x += offset.x;
-    vertex.pos.y += offset.y;
-    vertex.pos.z += offset.z;
+function moveCoplanarGroup(coplanarGroup, csgObject, offset) {
+  for (var polygon of coplanarGroup) {
+    var csgVertices = polygon.vertices;
+    var vertices = csgObject.mesh.geometry.vertices;
+    var vertex, vertIndex, face;
+    for (vertIndex in csgVertices) {
+      vertex = csgVertices[vertIndex];
+      vertex.pos.x += offset.x;
+      vertex.pos.y += offset.y;
+      vertex.pos.z += offset.z;
+    }
+    var allVertexIndexes = {};
+    for (face of polygon.faces) {
+      allVertexIndexes[face.a] = true;
+      allVertexIndexes[face.b] = true;
+      allVertexIndexes[face.c] = true;
+    }
+    for (vertIndex in allVertexIndexes) {
+      vertices[vertIndex].x += offset.x;
+      vertices[vertIndex].y += offset.y;
+      vertices[vertIndex].z += offset.z;
+    }
   }
-  var allVertexIndexes = {};
-  for (face of polygon.faces) {
-    allVertexIndexes[face.a] = true;
-    allVertexIndexes[face.b] = true;
-    allVertexIndexes[face.c] = true;
-  }
-  for (vertIndex in allVertexIndexes) {
-    vertices[vertIndex].x += offset.x;
-    vertices[vertIndex].y += offset.y;
-    vertices[vertIndex].z += offset.z;
-  }
-
   csgObject.mesh.geometry.elementsNeedUpdate = true;
 
 }
@@ -992,9 +997,9 @@ function updatePickSquare() {
           highlightCenter.x = nearest.nearestPoint.x;
           highlightCenter.y = nearest.nearestPoint.y;
           if (ci == 0) {
-            highlightCenter.polygon = csgObject.sectionEdges[sectionEdge][0].polygon;
+            highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
           } else {
-            highlightCenter.polygon = csgObject.sectionEdges[sectionEdge][1].polygon;
+            highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][1].polygon.coplanarGroup;
           }
         }          
       }
@@ -1004,16 +1009,16 @@ function updatePickSquare() {
     pickSquare.position.x = highlightCenter.x;
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
-    if (highlightCenter.polygon) {
-      console.log('we have a highlight face');
-      createPolygonHighlight(highlightCenter.polygon, csgObject);
+    if (highlightCenter.coplanarGroup) {
+      console.log('we have a highlight coplanarGroup');
+      createCoplanarGroupHighlight(highlightCenter.coplanarGroup, csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
-  if (polygonHighlight) {
+  if (coplanarGroupHighlight) {
     console.log('cleaning highlight');
-    parent.remove(polygonHighlight);
-    polygonHighlight = undefined;
+    parent.remove(coplanarGroupHighlight);
+    coplanarGroupHighlight = undefined;
   } 
   return(false);
 }
@@ -1084,12 +1089,12 @@ function updateCrosshair() {
       var yDiff = crosshair.position.y - prevCrossHair.y;
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
-          case 'polygon':
+          case 'coplanarGroup':
             addToDebugText(['Clicking face']);
             var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
-            var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
+            var planeVector = new THREE.Vector3(pickedItem.item[0].plane.normal.x, pickedItem.item[0].plane.normal.y, pickedItem.item[0].plane.normal.z);
             var projectedVector = projectOntoVector(diffVector, planeVector);
-            movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
+            moveCoplanarGroup(pickedItem.item, pickedItem.csgObject, projectedVector);
             break;
           case 'mesh':
           default:
@@ -1149,7 +1154,7 @@ function updateSelectableItem() {
     if (selectableItem.type == 'mesh') {
       selectMesh = selectableItem.selectMesh;
       selectMesh.position.x = 10000;
-    } else if (selectableItem.type == 'polygon') {
+    } else if (selectableItem.type == 'coplanarGroup') {
       // do nothing
     }
     selectableItem = { type: 'none' };

@@ -26,6 +26,7 @@
 //  [X] Investigate sprite labels: https://stemkoski.github.io/Three.js/Labeled-Geometry.html
 //  [X] Check if the CSG lib is in ES6. Yes, it is, but it doesn't make much difference to the resulting coplanar face mess.
 //  [X] Stay on the face normal when you drag the face
+
 //  [ ] Make extrusion for polygon dragging and drag the whole coplanar group
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 
@@ -721,8 +722,8 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         pickedItems.push(selectableItem);
         dragging = true;
         break;
-      case 'polygon':
-        pickedItems.push(selectableItem);
+      case 'coplanarGroup':
+        pickCoplanarGroup();
         dragging = true;
         break;
       case 'none':
@@ -732,8 +733,13 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     }
   } else {
     dragging = false;
-    if (selectableItem.type == 'mesh') {
-      selectableItem.selectMesh.material = selectMeshMaterialUnselected;
+    switch (selectableItem.type) {
+      case 'mesh':
+        selectableItem.selectMesh.material = selectMeshMaterialUnselected;
+        break;
+      case 'polygon':
+        console.log('Doing union join');
+        break;
     }
   }    
 }
@@ -944,28 +950,63 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
 
 }
 
-function moveCoplanarGroup(coplanarGroup, csgObject, offset) {
+// To move a coplanar group, we need to extrude all its polygons and grab all the outer faces for dragging.
+// When dragging is done, need to union all the extruded polygons with the main csgObject for the final output.
+// Need to constrain the drag so that you can't go back "inside" the main object (flipping the extrusions) as that would be 
+// a bad thing.
+
+function pickCoplanarGroup() {
+  var extrusions = [], extrusion, extrusionParts;
+  var extrusionDepth = 0.01;
+  var dragPoly;
+  var coplanarGroup = selectableItem.item;
+  var csgObject = selectableItem.csgObject;
+  var pickedItem;
+  pickedItems = []; // clear picked coplanar group. this should be smarter and clear the the currently picked coplanarGroup
   for (var polygon of coplanarGroup) {
-    var csgVertices = polygon.vertices;
-    var vertices = csgObject.mesh.geometry.vertices;
-    var vertex, vertIndex, face;
-    for (vertIndex in csgVertices) {
-      vertex = csgVertices[vertIndex];
-      vertex.pos.x += offset.x;
-      vertex.pos.y += offset.y;
-      vertex.pos.z += offset.z;
+    console.log('extruding from polygon:', polygon.uuid);
+    extrusionParts = csgObject.extrudeFromPolygon(polygon, extrusionDepth);
+    extrusion = extrusionParts.object;
+    extrusion.assignUuids();
+    csgObjects.push(extrusion);
+    console.log('picked face::', extrusionParts.topFace.uuid);
+
+    pickedItem = {
+      type: 'polygon',
+      item: extrusionParts.topFace,
+      csgObject: extrusion
     }
-    var allVertexIndexes = {};
-    for (face of polygon.faces) {
-      allVertexIndexes[face.a] = true;
-      allVertexIndexes[face.b] = true;
-      allVertexIndexes[face.c] = true;
-    }
-    for (vertIndex in allVertexIndexes) {
-      vertices[vertIndex].x += offset.x;
-      vertices[vertIndex].y += offset.y;
-      vertices[vertIndex].z += offset.z;
-    }
+    pickedItems.push(pickedItem);
+
+    extrusion.bsp = new CSG.Node(extrusion.polygons);
+    var extrusionGeometry = extrusion.toMesh();
+    extrusion.mesh = new THREE.Mesh( extrusionGeometry, csgObjectMaterialFlat);  
+    extrusion.createCoplanarGroups();
+    parent.add(extrusion.mesh);
+
+  }
+}
+
+function movePolygon(polygon, csgObject, offset) {
+  var csgVertices = polygon.vertices;
+  var vertices = csgObject.mesh.geometry.vertices;
+  var vertex, vertIndex, face;
+  for (vertIndex in csgVertices) {
+    vertex = csgVertices[vertIndex];
+    vertex.pos.x += offset.x;
+    vertex.pos.y += offset.y;
+    vertex.pos.z += offset.z;
+  }
+  var allVertexIndexes = {};
+  for (face of polygon.faces) {
+    allVertexIndexes[face.a] = true;
+    allVertexIndexes[face.b] = true;
+    allVertexIndexes[face.c] = true;
+  }
+  for (vertIndex in allVertexIndexes) {
+    vertices[vertIndex].x += offset.x;
+    vertices[vertIndex].y += offset.y;
+    vertices[vertIndex].z += offset.z;
   }
   csgObject.mesh.geometry.elementsNeedUpdate = true;
 
@@ -1096,12 +1137,13 @@ function updateCrosshair() {
       var yDiff = crosshair.position.y - prevCrossHair.y;
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
-          case 'coplanarGroup':
-            addToDebugText(['Clicking face']);
+          case 'polygon':
             var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
-            var planeVector = new THREE.Vector3(pickedItem.item[0].plane.normal.x, pickedItem.item[0].plane.normal.y, pickedItem.item[0].plane.normal.z);
+            var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
             var projectedVector = projectOntoVector(diffVector, planeVector);
-            moveCoplanarGroup(pickedItem.item, pickedItem.csgObject, projectedVector);
+            addToDebugText(['Clicked face:', pickedItem.item.uuid]);
+            movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
+            console.log('moved polygon uuid:', pickedItem.item.uuid);
             break;
           case 'mesh':
           default:

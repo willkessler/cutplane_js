@@ -1290,7 +1290,6 @@ function drawSectionLineJSM() {
   }
 }
 
-// This is not working, we need to actually compare distances between vertices to combine them
 
 function createDuplicateVertexMap(vertices) {
   var vertexMap = {};
@@ -1307,6 +1306,8 @@ function createDuplicateVertexMap(vertices) {
   }
   return(vertexMap);
 }
+
+// This is not working, we need to actually compare distances between vertices to combine them
 
 function findDuplicateVertices(vertices) {
   var vertexMapRaw = [];

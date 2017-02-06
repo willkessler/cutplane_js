@@ -356,7 +356,6 @@ function intersectLineWithPlane(P0, P1, planeZ) {
 
 function pointsAreEqual(P0, P1) {
   return (dist3(P0, P1) < POINT_ON_POINT_TOLERANCE * POINT_ON_POINT_TOLERANCE);
-//  return (dist3(P0, P1) < .005);
 }
 
 /* From: http://stackoverflow.com/questions/27409074/converting-3d-position-to-2d-screen-position-r69, answer 3 */
@@ -682,11 +681,11 @@ function setupCSG() {
   setupSelectMesh(csgObject);
   */
 
-
-/*
-  csgObject = csgObject.extrudeFromPolygon(csgObject.polygons[7], 0.5);
+  /*
+  var extrusion = csgObject.extrudeFromPolygon(csgObject.polygons[1], 0.5);
+  csgObject = extrusion.object;
   console.log('extrusion:', csgObject);
-  csgObject.translate(0,1,0);
+  csgObject.translate(0,.2,0);
 
   cGeo = csgObject.toMesh();
   
@@ -697,7 +696,7 @@ function setupCSG() {
 
   csgObjects.push(csgObject);
   setupSelectMesh(csgObject);
-*/
+  */
 
 }
 
@@ -917,6 +916,23 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
+
+function createDuplicateVertexMap(vertices) {
+  var vertexMap = {};
+  vertexMap[0] = 0; // first vertex is nearest to itself
+  var nearest;
+  var numVerts = vertLen = vertices.length;
+  for (var vv = 1; vv < numVerts; ++vv) {
+    nearest = _.find(_.keys(vertexMap), function(key) { return (pointsAreEqual(vertices[key], vertices[vv])); });
+    if (nearest) {
+      vertexMap[vv] = parseInt(nearest);
+    } else {
+      vertexMap[vv] = vv;
+    }
+  }
+  return(vertexMap);
+}
+
 function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
   if (coplanarGroupHighlight) {
     parent.remove(coplanarGroupHighlight);
@@ -957,7 +973,7 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
 
 function pickCoplanarGroup() {
   var extrusions = [], extrusion, extrusionParts;
-  var extrusionDepth = 0.01;
+  var extrusionDepth = 0.3;
   var dragPoly;
   var coplanarGroup = selectableItem.item;
   var csgObject = selectableItem.csgObject;
@@ -968,7 +984,6 @@ function pickCoplanarGroup() {
     extrusionParts = csgObject.extrudeFromPolygon(polygon, extrusionDepth);
     extrusion = extrusionParts.object;
     extrusion.assignUuids();
-    csgObjects.push(extrusion);
     console.log('picked face::', extrusionParts.topFace.uuid);
 
     pickedItem = {
@@ -981,22 +996,22 @@ function pickCoplanarGroup() {
     extrusion.bsp = new CSG.Node(extrusion.polygons);
     var extrusionGeometry = extrusion.toMesh();
     extrusion.mesh = new THREE.Mesh( extrusionGeometry, csgObjectMaterialFlat);  
+    extrusion.mesh.geometry.computeFaceNormals();
     extrusion.createCoplanarGroups();
     parent.add(extrusion.mesh);
+    csgObjects.push(extrusion);
+    setupSelectMesh(extrusion);
 
   }
+  dragging = false;
 }
 
 function movePolygon(polygon, csgObject, offset) {
-  var csgVertices = polygon.vertices;
   var vertices = csgObject.mesh.geometry.vertices;
-  var vertex, vertIndex, face;
-  for (vertIndex in csgVertices) {
-    vertex = csgVertices[vertIndex];
-    vertex.pos.x += offset.x;
-    vertex.pos.y += offset.y;
-    vertex.pos.z += offset.z;
-  }
+  var vertexPolygons;
+  polygon.translate(offset);
+  console.log('plane post move:', polygon.plane.normal, polygon.plane.w);
+  var vertIndex, face;
   var allVertexIndexes = {};
   for (face of polygon.faces) {
     allVertexIndexes[face.a] = true;

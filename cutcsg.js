@@ -742,6 +742,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         break;
     }
     mergeExtensions();
+    updateBsps();
   }    
 }
 
@@ -926,10 +927,12 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
   
   var geometry = new THREE.Geometry();
   var base = 0;
+  var polyCtr = 0;
   for (var polygon of coplanarGroup) {
     var vertices = polygon.vertices;
     for (var vertex of vertices) {
       geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
+      console.log('Created highlight vertex:', vertex.pos.x, vertex.pos.y, vertex.pos.z);
     }
     var face;
     for (var i = 2; i < vertices.length; ++i) {
@@ -937,6 +940,9 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
       geometry.faces.push(face);
     }
     base += polygon.vertices.length;
+    console.log('Highlighted polygon:', polyCtr++);
+    
+
   }
 
   coplanarGroupHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
@@ -987,6 +993,15 @@ function mergeExtensions() {
   }
   mustMergeExtension = false;
   firstRender = true; // force section line recalculation
+}
+
+function updateBsps() {
+  // Redo all bsps for any dragged items
+  for (var pickedItem of pickedItems) {
+    if (pickedItem.type == 'mesh') {
+      pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
+    }
+  }
 }
 
 // To move a coplanar group, we need to extrude all its polygons and grab all the outer faces for dragging.

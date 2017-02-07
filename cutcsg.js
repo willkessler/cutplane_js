@@ -27,7 +27,9 @@
 //  [X] Check if the CSG lib is in ES6. Yes, it is, but it doesn't make much difference to the resulting coplanar face mess.
 //  [X] Stay on the face normal when you drag the face
 
-//  [ ] Make extrusion for polygon dragging and drag the whole coplanar group
+//  [X] Make extrusion for polygon dragging and drag the whole coplanar group
+//  [ ] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
+//  [ ] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 
 //  [ ] If looking at room from behind, reverse the cursor controls
@@ -742,7 +744,12 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         break;
     }
     mergeExtensions();
-    updateBsps();
+    // Redo all bsps for any dragged items
+    for (var pickedItem of pickedItems) {
+      if (pickedItem.type == 'mesh') {
+        pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
+      }
+    }
   }    
 }
 
@@ -993,15 +1000,6 @@ function mergeExtensions() {
   }
   mustMergeExtension = false;
   firstRender = true; // force section line recalculation
-}
-
-function updateBsps() {
-  // Redo all bsps for any dragged items
-  for (var pickedItem of pickedItems) {
-    if (pickedItem.type == 'mesh') {
-      pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
-    }
-  }
 }
 
 // To move a coplanar group, we need to extrude all its polygons and grab all the outer faces for dragging.

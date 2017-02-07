@@ -82,6 +82,8 @@ var pickedItems = [];
 
 var pickedList = [];
 var dragging = false;
+var mustMergeExtension = false;
+var mustMergeParent = undefined;
 var movingCutplane = false;
 var startCursorPauseTime;
 var wasMovingPlane = false;
@@ -737,9 +739,9 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         selectableItem.selectMesh.material = selectMeshMaterialUnselected;
         break;
       case 'polygon':
-        console.log('Doing union join');
         break;
     }
+    mergeExtensions();
   }    
 }
 
@@ -916,23 +918,6 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
-
-function createDuplicateVertexMap(vertices) {
-  var vertexMap = {};
-  vertexMap[0] = 0; // first vertex is nearest to itself
-  var nearest;
-  var numVerts = vertLen = vertices.length;
-  for (var vv = 1; vv < numVerts; ++vv) {
-    nearest = _.find(_.keys(vertexMap), function(key) { return (pointsAreEqual(vertices[key], vertices[vv])); });
-    if (nearest) {
-      vertexMap[vv] = parseInt(nearest);
-    } else {
-      vertexMap[vv] = vv;
-    }
-  }
-  return(vertexMap);
-}
-
 function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
   if (coplanarGroupHighlight) {
     parent.remove(coplanarGroupHighlight);
@@ -966,6 +951,43 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
 
 }
 
+function mergeExtensions() {
+  if (mustMergeExtension) {
+    var fullyMergedObject;
+    fullyMergedObject = mustMergeParent.clone();
+    for (var pickedItem of pickedItems) {
+      fullyMergedObject = fullyMergedObject.union(pickedItem.csgObject);
+    }
+    _.each(csgObjects, function(obj) { 
+      console.log('Removing mesh for object:', obj);
+      parent.remove(obj.mesh); 
+    });
+    var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
+    csgObjects = _.difference(csgObjects, pickedObjects);
+
+    debugger;
+    var cGeo = fullyMergedObject.toMesh();
+    fullyMergedObject.bsp = new CSG.Node(fullyMergedObject.polygons);
+    fullyMergedObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+    fullyMergedObject.assignUuids();
+    fullyMergedObject.createCoplanarGroups();
+    setupSelectMesh(fullyMergedObject);
+
+    for (var i in csgObjects) {
+      var csgObject = csgObjects[i];
+      if (csgObject == mustMergeParent) {
+
+        parent.remove(csgObject.mesh)
+        parent.add(fullyMergedObject.mesh);
+
+        csgObjects[i] = fullyMergedObject;
+        selectableItem = { type: 'none' };
+        break;
+      }
+    }
+  }
+}
+
 // To move a coplanar group, we need to extrude all its polygons and grab all the outer faces for dragging.
 // When dragging is done, need to union all the extruded polygons with the main csgObject for the final output.
 // Need to constrain the drag so that you can't go back "inside" the main object (flipping the extrusions) as that would be 
@@ -973,7 +995,7 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
 
 function pickCoplanarGroup() {
   var extrusions = [], extrusion, extrusionParts;
-  var extrusionDepth = 0.3;
+  var extrusionDepth = 0.02;
   var dragPoly;
   var coplanarGroup = selectableItem.item;
   var csgObject = selectableItem.csgObject;
@@ -1003,7 +1025,8 @@ function pickCoplanarGroup() {
     setupSelectMesh(extrusion);
 
   }
-  dragging = false;
+  mustMergeExtension = true;
+  mustMergeParent = csgObject;
 }
 
 function movePolygon(polygon, csgObject, offset) {

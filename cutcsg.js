@@ -965,7 +965,6 @@ function mergeExtensions() {
     var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
     csgObjects = _.difference(csgObjects, pickedObjects);
 
-    debugger;
     var cGeo = fullyMergedObject.toMesh();
     fullyMergedObject.bsp = new CSG.Node(fullyMergedObject.polygons);
     fullyMergedObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
@@ -986,6 +985,8 @@ function mergeExtensions() {
       }
     }
   }
+  mustMergeExtension = false;
+  firstRender = true; // force section line recalculation
 }
 
 // To move a coplanar group, we need to extrude all its polygons and grab all the outer faces for dragging.
@@ -1000,6 +1001,9 @@ function pickCoplanarGroup() {
   var coplanarGroup = selectableItem.item;
   var csgObject = selectableItem.csgObject;
   var pickedItem;
+
+  console.log('picked coplanar group');
+
   pickedItems = []; // clear picked coplanar group. this should be smarter and clear the the currently picked coplanarGroup
   for (var polygon of coplanarGroup) {
     console.log('extruding from polygon:', polygon.uuid);

@@ -64,6 +64,7 @@ var POINT_ON_POINT_TOLERANCE = 0.087;
 var POINT_ON_LINE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
+var COPLANAR_DRAG_TOLERANCE = 0.0015;
 
 var parent;
 var plane;
@@ -84,9 +85,12 @@ var pickedItems = [];
 
 var pickedList = [];
 var dragging = false;
-var mustMergeExtension = false;
-var mustMergeParent = undefined;
+var mergeParent = undefined;
 var movingCutplane = false;
+var checkForCoplanarDragging = false;
+var coplanarDragBegun = false;
+var coplanarDragStart;
+var coplanarDraggable;
 var startCursorPauseTime;
 var wasMovingPlane = false;
 var wasRotatingRoom = false;
@@ -685,22 +689,6 @@ function setupCSG() {
   setupSelectMesh(csgObject);
   */
 
-  /*
-  var extrusion = csgObject.extrudeFromPolygon(csgObject.polygons[1], 0.5);
-  csgObject = extrusion.object;
-  console.log('extrusion:', csgObject);
-  csgObject.translate(0,.2,0);
-
-  cGeo = csgObject.toMesh();
-  
-  csgObject.bsp = new CSG.Node(csgObject.polygons);
-  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-  csgObject.mesh.geometry.computeFaceNormals();
-  parent.add(csgObject.mesh);
-
-  csgObjects.push(csgObject);
-  setupSelectMesh(csgObject);
-  */
 
 }
 
@@ -726,8 +714,10 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         dragging = true;
         break;
       case 'coplanarGroup':
-        pickCoplanarGroup();
         dragging = true;
+        checkForCoplanarDragging = true;
+        coplanarDragStart = { x: crosshair.position.x, y: crosshair.position.y };
+        coplanarDraggable = selectableItem;
         break;
       case 'none':
       default:
@@ -743,12 +733,16 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
       case 'polygon':
         break;
     }
-    mergeExtensions();
-    // Redo all bsps for any dragged items
-    for (var pickedItem of pickedItems) {
-      if (pickedItem.type == 'mesh') {
-        pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
+    checkForCoplanarDragging = false;
+    if (coplanarDragBegun) {
+      mergeExtensions();
+      // Redo all bsps for any dragged items
+      for (var pickedItem of pickedItems) {
+        if (pickedItem.type == 'mesh') {
+          pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
+        }
       }
+      coplanarDragBegun = false;
     }
   }    
 }
@@ -965,40 +959,37 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
 }
 
 function mergeExtensions() {
-  if (mustMergeExtension) {
-    var fullyMergedObject;
-    fullyMergedObject = mustMergeParent.clone();
-    for (var pickedItem of pickedItems) {
-      fullyMergedObject = fullyMergedObject.union(pickedItem.csgObject);
-    }
-    _.each(csgObjects, function(obj) { 
-      console.log('Removing mesh for object:', obj);
-      parent.remove(obj.mesh); 
-    });
-    var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
-    csgObjects = _.difference(csgObjects, pickedObjects);
+  var fullyMergedObject;
+  fullyMergedObject = mergeParent.clone();
+  for (var pickedItem of pickedItems) {
+    fullyMergedObject = fullyMergedObject.union(pickedItem.csgObject);
+  }
+  _.each(csgObjects, function(obj) { 
+    console.log('Removing mesh for object:', obj);
+    parent.remove(obj.mesh); 
+  });
+  var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
+  csgObjects = _.difference(csgObjects, pickedObjects);
 
-    var cGeo = fullyMergedObject.toMesh();
-    fullyMergedObject.bsp = new CSG.Node(fullyMergedObject.polygons);
-    fullyMergedObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-    fullyMergedObject.assignUuids();
-    fullyMergedObject.createCoplanarGroups();
-    setupSelectMesh(fullyMergedObject);
+  var cGeo = fullyMergedObject.toMesh();
+  fullyMergedObject.bsp = new CSG.Node(fullyMergedObject.polygons);
+  fullyMergedObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  fullyMergedObject.assignUuids();
+  fullyMergedObject.createCoplanarGroups();
+  setupSelectMesh(fullyMergedObject);
 
-    for (var i in csgObjects) {
-      var csgObject = csgObjects[i];
-      if (csgObject == mustMergeParent) {
+  for (var i in csgObjects) {
+    var csgObject = csgObjects[i];
+    if (csgObject == mergeParent) {
 
-        parent.remove(csgObject.mesh)
-        parent.add(fullyMergedObject.mesh);
+      parent.remove(csgObject.mesh)
+      parent.add(fullyMergedObject.mesh);
 
-        csgObjects[i] = fullyMergedObject;
-        selectableItem = { type: 'none' };
-        break;
-      }
+      csgObjects[i] = fullyMergedObject;
+      selectableItem = { type: 'none' };
+      break;
     }
   }
-  mustMergeExtension = false;
   firstRender = true; // force section line recalculation
 }
 
@@ -1011,8 +1002,8 @@ function pickCoplanarGroup() {
   var extrusions = [], extrusion, extrusionParts;
   var extrusionDepth = 0.02;
   var dragPoly;
-  var coplanarGroup = selectableItem.item;
-  var csgObject = selectableItem.csgObject;
+  var coplanarGroup = coplanarDraggable.item;
+  var csgObject = coplanarDraggable.csgObject;
   var pickedItem;
 
   console.log('picked coplanar group');
@@ -1042,8 +1033,7 @@ function pickCoplanarGroup() {
     setupSelectMesh(extrusion);
 
   }
-  mustMergeExtension = true;
-  mustMergeParent = csgObject;
+  mergeParent = csgObject;
 }
 
 function movePolygon(polygon, csgObject, offset) {
@@ -1187,18 +1177,30 @@ function updateCrosshair() {
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
+    if (checkForCoplanarDragging) {
+      if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
+        pickCoplanarGroup();
+        coplanarDragBegun = true;
+        dragging = true;
+        checkForCoplanarDragging = false;
+      }
+    }        
+
     if (pickedItems.length && dragging) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
+
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
-            var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
-            var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
-            var projectedVector = projectOntoVector(diffVector, planeVector);
-            addToDebugText(['Clicked face:', pickedItem.item.uuid]);
-            movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
-            console.log('moved polygon uuid:', pickedItem.item.uuid);
+            if (coplanarDragBegun) {
+              var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
+              var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
+              var projectedVector = projectOntoVector(diffVector, planeVector);
+              addToDebugText(['Clicked face:', pickedItem.item.uuid]);
+              movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
+              console.log('moved polygon uuid:', pickedItem.item.uuid);
+            }
             break;
           case 'mesh':
           default:

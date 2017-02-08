@@ -28,8 +28,9 @@
 //  [X] Stay on the face normal when you drag the face
 
 //  [X] Make extrusion for polygon dragging and drag the whole coplanar group
-//  [ ] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
+//  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
 //  [ ] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
+//  [ ] If you drag back to starting spot, maybe we just cancel the whole operation?
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 
 //  [ ] If looking at room from behind, reverse the cursor controls
@@ -91,6 +92,7 @@ var checkForCoplanarDragging = false;
 var coplanarDragBegun = false;
 var coplanarDragStart;
 var coplanarDraggable;
+var coplanarDragTotal;
 var startCursorPauseTime;
 var wasMovingPlane = false;
 var wasRotatingRoom = false;
@@ -716,7 +718,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
       case 'coplanarGroup':
         dragging = true;
         checkForCoplanarDragging = true;
-        coplanarDragStart = { x: crosshair.position.x, y: crosshair.position.y };
+        coplanarDragStart = new THREE.Vector3( crosshair.position.x, crosshair.position.y, plane.position.z );
         coplanarDraggable = selectableItem;
         break;
       case 'none':
@@ -933,7 +935,7 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
     var vertices = polygon.vertices;
     for (var vertex of vertices) {
       geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
-      console.log('Created highlight vertex:', vertex.pos.x, vertex.pos.y, vertex.pos.z);
+      //console.log('Created highlight vertex:', vertex.pos.x, vertex.pos.y, vertex.pos.z);
     }
     var face;
     for (var i = 2; i < vertices.length; ++i) {
@@ -941,9 +943,7 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
       geometry.faces.push(face);
     }
     base += polygon.vertices.length;
-    console.log('Highlighted polygon:', polyCtr++);
-    
-
+    //console.log('Highlighted polygon:', polyCtr++);
   }
 
   coplanarGroupHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
@@ -1181,6 +1181,7 @@ function updateCrosshair() {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
         pickCoplanarGroup();
         coplanarDragBegun = true;
+        coplanarDragTotal = new THREE.Vector3(0,0,0);
         dragging = true;
         checkForCoplanarDragging = false;
       }
@@ -1197,9 +1198,18 @@ function updateCrosshair() {
               var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
               var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
               var projectedVector = projectOntoVector(diffVector, planeVector);
-              addToDebugText(['Clicked face:', pickedItem.item.uuid]);
-              movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
-              console.log('moved polygon uuid:', pickedItem.item.uuid);
+              coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
+              var moveVector = coplanarDragTotal.clone();
+              moveVector.normalize();
+              console.log('moveVector:', moveVector);
+              var check = planeVector.dot(moveVector);
+              if (check > 0) {                
+                addToDebugText(['Clicked face:', pickedItem.item.uuid]);
+                movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
+                console.log('moved polygon uuid:', pickedItem.item.uuid);
+              } else {
+                console.log('check:',check);
+              }
             }
             break;
           case 'mesh':

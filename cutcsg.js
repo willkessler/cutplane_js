@@ -31,13 +31,13 @@
 //  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
 //  [ ] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
 //  [ ] If you drag back to starting spot, maybe we just cancel the whole operation?
+//  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 
 //  [ ] If looking at room from behind, reverse the cursor controls
 //  [ ] Slice objects in half at cutplane
 //  [ ] Use mousewheel to zoom in and out
 //  [ ] Scale boxes to resize objects in any direction, when object is picked
-//  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
 //  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 //  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
@@ -965,7 +965,7 @@ function mergeExtensions() {
     fullyMergedObject = fullyMergedObject.union(pickedItem.csgObject);
   }
   _.each(csgObjects, function(obj) { 
-    console.log('Removing mesh for object:', obj);
+    //console.log('Removing mesh for object:', obj);
     parent.remove(obj.mesh); 
   });
   var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
@@ -1040,7 +1040,7 @@ function movePolygon(polygon, csgObject, offset) {
   var vertices = csgObject.mesh.geometry.vertices;
   var vertexPolygons;
   polygon.translate(offset);
-  console.log('plane post move:', polygon.plane.normal, polygon.plane.w);
+  //console.log('plane post move:', polygon.plane.normal, polygon.plane.w);
   var vertIndex, face;
   var allVertexIndexes = {};
   for (face of polygon.faces) {
@@ -1103,7 +1103,7 @@ function updatePickSquare() {
     pickSquare.position.y = highlightCenter.y;
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.coplanarGroup) {
-      console.log('we have a highlight coplanarGroup');
+      //console.log('we have a highlight coplanarGroup');
       createCoplanarGroupHighlight(highlightCenter.coplanarGroup, csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
@@ -1190,7 +1190,7 @@ function updateCrosshair() {
     if (pickedItems.length && dragging) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
-
+      var sumCtr = 0;
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
@@ -1198,18 +1198,24 @@ function updateCrosshair() {
               var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
               var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
               var projectedVector = projectOntoVector(diffVector, planeVector);
-              coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
-              var moveVector = coplanarDragTotal.clone();
-              moveVector.normalize();
-              console.log('moveVector:', moveVector);
-              var check = planeVector.dot(moveVector);
-              if (check > 0) {                
-                addToDebugText(['Clicked face:', pickedItem.item.uuid]);
-                movePolygon(pickedItem.item, pickedItem.csgObject, projectedVector);
-                console.log('moved polygon uuid:', pickedItem.item.uuid);
-              } else {
-                console.log('check:',check);
+              if (sumCtr++ == 0) {
+                coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
               }
+              var moveVector = coplanarDragTotal.clone();
+              //moveVector.normalize();
+              //console.log('moveVector:', moveVector);
+              var check = planeVector.dot(moveVector);
+              addToDebugText(['Check:', check]);
+              console.log('check:', check);
+              var adjustedVector;
+              if (check >= 0) {                
+                //addToDebugText(['Clicked face:', pickedItem.item.uuid]);
+                //console.log('moved polygon uuid:', pickedItem.item.uuid);
+                adjustedVector = projectedVector.clone();
+              } else {
+                adjustedVector = moveVector.sub(coplanarDragStart);
+              }
+              movePolygon(pickedItem.item, pickedItem.csgObject, adjustedVector);
             }
             break;
           case 'mesh':

@@ -253,6 +253,7 @@ window.addEventListener('keyup', handleKeyUp, false);
 function sqr(x) { return x * x }
 function dist2(v, w) { return sqr(v.x - w.x) + sqr(v.y - w.y) }
 function dist3(v, w) { return sqr(v.x - w.x) + sqr(v.y - w.y) + sqr(v.z - w.z) }
+function dist3slow(v, w) { return Math.sqrt(sqr(v.x - w.x) + sqr(v.y - w.y) + sqr(v.z - w.z)) }
 function distToSegmentSquared(p, v, w) {
   var l2 = dist2(v, w);
   if (l2 == 0) { 
@@ -737,15 +738,14 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     }
     checkForCoplanarDragging = false;
     if (coplanarDragBegun) {
-      debugger;
       mergeExtensions();
-      // Redo all bsps for any dragged items
-      for (var pickedItem of pickedItems) {
-        if (pickedItem.type == 'mesh') {
-          pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
-        }
-      }
       coplanarDragBegun = false;
+    }
+    // Redo all bsps for any dragged items
+    for (var pickedItem of pickedItems) {
+      if (pickedItem.type == 'mesh') {
+        pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
+      }
     }
   }    
 }
@@ -1033,8 +1033,8 @@ function pickCoplanarGroup() {
     parent.add(extrusion.mesh);
     csgObjects.push(extrusion);
     setupSelectMesh(extrusion);
-    extrusionParts.topFace.saveDistancesFromOriginPoint(coplanarDragStart);
-    setMeshVertexOffsets(extrusion, coplanarDragStart);
+    extrusion.saveVertexBackups();
+    saveMeshVertices(extrusion);
   }
   mergeParent = csgObject;
 
@@ -1045,17 +1045,16 @@ function pickCoplanarGroup() {
 
 }
 
-function setMeshVertexOffsets(csgObject, originPoint) {
-  var vertices = csgObject.mesh.geometry.vertices;
-  for (vertex of vertices) {
-    vertex.offset = { x: vertex.x - originPoint.x, 
-                      y: vertex.y - originPoint.y,
-                      z: vertex.z - originPoint.z };
+function saveMeshVertices(csgObject) {
+  csgObject.mesh.geometry.backups = [];
+  for (vertex of csgObject.mesh.geometry.vertices) {
+    csgObject.mesh.geometry.backups.push(new THREE.Vector3( vertex.x, vertex.y, vertex.z ));
   }
 }
 
-function setPolygonMeshFromOriginPoint(polygon, originPoint) {
+function setPolygonMeshFromBackup(polygon, offset) {
   var vertices = polygon.csgObject.mesh.geometry.vertices;
+  var backups = polygon.csgObject.mesh.geometry.backups;
   var vertIndex, face;
   var allVertexIndexes = {};
   for (face of polygon.faces) {
@@ -1064,9 +1063,9 @@ function setPolygonMeshFromOriginPoint(polygon, originPoint) {
     allVertexIndexes[face.c] = true;
   }
   for (vertIndex in allVertexIndexes) {
-    vertices[vertIndex].x = originPoint.x + vertices[vertIndex].offset.x;
-    vertices[vertIndex].y = originPoint.y + vertices[vertIndex].offset.y;
-    vertices[vertIndex].z = originPoint.z + vertices[vertIndex].offset.z;
+    vertices[vertIndex].x = backups[vertIndex].x + offset.x;
+    vertices[vertIndex].y = backups[vertIndex].y + offset.y;
+    vertices[vertIndex].z = backups[vertIndex].z + offset.z;
   }
   polygon.csgObject.mesh.geometry.elementsNeedUpdate = true;
 
@@ -1107,7 +1106,7 @@ function updatePickSquare() {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
           } else {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][1].polygon.coplanarGroup;
-            console.log('highlightCenter.coplanarGroup:',highlightCenter.coplanarGroup);
+            //console.log('highlightCenter.coplanarGroup:',highlightCenter.coplanarGroup);
           }
         }          
       }
@@ -1202,7 +1201,12 @@ function updateCrosshair() {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       var sumCtr = 0;
-      var crosshairVector = new THREE.Vector3(crosshair.position.x, crosshair.position.y, plane.position.z);
+      if (coplanarDragStart) {
+        addToDebugText(['coplanarDragStart: ', coplanarDragStart.x, coplanarDragStart.y]);
+        addToDebugText(['<br>crosshair: ', crosshair.position.x, crosshair.position.y]);
+      }
+
+      console.log('crosshairVector:', crosshairVector);
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
@@ -1211,7 +1215,13 @@ function updateCrosshair() {
               var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
               var planeVector = new THREE.Vector3(polygon.plane.normal.x, polygon.plane.normal.y, polygon.plane.normal.z);
               //var projectedVector = projectOntoVector(diffVector, planeVector);
+              var crosshairVector = new THREE.Vector3(crosshair.position.x, crosshair.position.y, plane.position.z);
+              var amountMoved = dist3slow(crosshairVector, coplanarDragStart);
+              crosshairVector.normalize();
               var projectedVector = projectOntoVector(crosshairVector, planeVector);
+              projectedVector.multiplyScalar(amountMoved);
+              addToDebugText(['<br>projectedVector: ', projectedVector.x, projectedVector.y]);
+              addToDebugText(['<br>amountMoved: ', amountMoved]);
               console.log(crosshairVector, planeVector, projectedVector);
               if (sumCtr++ == 0) {
                 coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
@@ -1220,18 +1230,16 @@ function updateCrosshair() {
               //moveVector.normalize();
               //console.log('moveVector:', moveVector);
               var check = planeVector.dot(moveVector);
-              addToDebugText(['Check:', check]);
               console.log('check:', check);
               var adjustedVector;
               if (check >= 0) {                
-                //addToDebugText(['Clicked face:', pickedItem.item.uuid]);
                 //console.log('moved polygon uuid:', pickedItem.item.uuid);
                 adjustedVector = projectedVector.clone();
               } else {
                 adjustedVector = moveVector.sub(coplanarDragStart);
               }
-              polygon.setVerticesFromOriginPoint(projectedVector);
-              setPolygonMeshFromOriginPoint(polygon, projectedVector);
+              polygon.setVerticesFromBackups(projectedVector);
+              setPolygonMeshFromBackup(polygon, projectedVector);
             }
             break;
           case 'mesh':

@@ -29,9 +29,10 @@
 
 //  [X] Make extrusion for polygon dragging and drag the whole coplanar group
 //  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
-//  [ ] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
-//  [ ] If you drag back to starting spot, maybe we just cancel the whole operation?
+//  [X] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
+//  [ ] Clean up all the messy code leftovers
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
+//  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 
 //  [ ] If looking at room from behind, reverse the cursor controls

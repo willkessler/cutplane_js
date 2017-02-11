@@ -58,6 +58,7 @@
 // basic threejs tutorial: https://manu.ninja/webgl-3d-model-viewer-using-three-js
 
 var FACELEN = 3; // triangles by default in meshes
+var ROOM_SIZE = 1.0;
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
@@ -70,6 +71,7 @@ var COPLANAR_DRAG_TOLERANCE = 0.0015;
 var parent;
 var plane;
 var crosshair;
+var rotateTool;
 var cutplaneVectorScreenSpace;
 var csgObjects;
 
@@ -649,6 +651,59 @@ function setupSelectMesh(csgObject) {
   selectMesh.scale.multiplyScalar(1.04);
   selectMesh.position.x = 100000;
   parent.add(selectMesh);
+}
+
+
+function setupRotateTool() {
+  var rotateToolSpecs = { 
+    radius: 0.2,
+    thickness: 0.01,
+    margin: 0.05,
+    segments: 100,
+  };
+  rotateToolSpecs.startingPos = 
+    { x: -1 * ROOM_SIZE + rotateToolSpecs.radius + rotateToolSpecs.margin, y: ROOM_SIZE - rotateToolSpecs.radius - rotateToolSpecs.margin };
+  rotateToolSpecs.smallRingRadius = rotateToolSpecs.radius * 0.2;
+
+  rotateTool = new THREE.Object3D();
+  var geometry = new THREE.RingGeometry( rotateToolSpecs.radius, rotateToolSpecs.radius - rotateToolSpecs.thickness , rotateToolSpecs.segments );
+  var material = new THREE.MeshBasicMaterial( { color: 0xffffff, side: THREE.DoubleSide } );
+  var ring = new THREE.Mesh( geometry, material );
+  rotateTool.add( ring );
+
+  var cross = new THREE.Geometry();
+  cross.vertices.push(
+    new THREE.Vector3(-1 * rotateToolSpecs.radius, 0, 0),
+    new THREE.Vector3( 1 * rotateToolSpecs.radius, 0, 0),
+    new THREE.Vector3(0, -1 * rotateToolSpecs.radius, 0),
+    new THREE.Vector3(0,  1 * rotateToolSpecs.radius, 0)
+  );
+  var lines = new THREE.LineSegments(cross, lineMaterial);
+  rotateTool.add(lines);
+
+  var geometry = new THREE.RingGeometry( rotateToolSpecs.smallRingRadius, rotateToolSpecs.smallRingRadius - rotateToolSpecs.thickness , rotateToolSpecs.segments );
+  var material = new THREE.MeshBasicMaterial( { color: 0xffffff, side: THREE.DoubleSide } );
+  var smallRingLeft = new THREE.Mesh( geometry, material );
+  var smallRingRight = smallRingLeft.clone();
+  var smallRingTop = smallRingLeft.clone();
+  var smallRingBottom = smallRingLeft.clone();
+  smallRingLeft.position.x = -1 * rotateToolSpecs.radius;
+  rotateTool.add(smallRingLeft);
+
+  smallRingRight.position.x = rotateToolSpecs.radius;
+  rotateTool.add(smallRingRight);
+
+  smallRingTop.position.y =  1 * rotateToolSpecs.radius;
+  rotateTool.add(smallRingTop);
+
+  smallRingBottom.position.y = -1 * rotateToolSpecs.radius;
+  rotateTool.add(smallRingBottom);
+
+  rotateTool.position.x = rotateToolSpecs.startingPos.x;
+  rotateTool.position.y = rotateToolSpecs.startingPos.y;
+  rotateTool.position.z = 0.01;
+
+  plane.add(rotateTool);
 }
 
 
@@ -1388,6 +1443,7 @@ setupRoom();
 updateCutplaneProjectionVector();
 setupCrosshair();
 setupPickSquare();
+setupRotateTool();
 
 camera.position.set( 0, 0, 5);
 setupLights();

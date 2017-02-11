@@ -131,6 +131,16 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
   depthFunc: THREE.AlwaysDepth
 });
 
+var rotateToolMaterial = new THREE.LineDashedMaterial({
+  color: 0xaaaaaa,
+  dashSize: .01,
+  gapSize: .01,
+  linewidth: 1,
+  depthTest: false,
+  depthWrite: false,
+  depthFunc: THREE.AlwaysDepth
+});
+
 var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
   shading: THREE.FlatShading,
   color:0xffffff,
@@ -658,7 +668,7 @@ function setupRotateTool() {
   var rotateToolSpecs = { 
     radius: 0.2,
     thickness: 0.01,
-    margin: 0.05,
+    margin: -0.1,
     segments: 100,
   };
   rotateToolSpecs.startingPos = 
@@ -667,7 +677,7 @@ function setupRotateTool() {
 
   rotateTool = new THREE.Object3D();
   var geometry = new THREE.RingGeometry( rotateToolSpecs.radius, rotateToolSpecs.radius - rotateToolSpecs.thickness , rotateToolSpecs.segments );
-  var material = new THREE.MeshBasicMaterial( { color: 0xffffff, side: THREE.DoubleSide } );
+  var material = new THREE.MeshBasicMaterial( { color: 0xaaaaaa, side: THREE.DoubleSide } );
   var ring = new THREE.Mesh( geometry, material );
   rotateTool.add( ring );
 
@@ -678,11 +688,12 @@ function setupRotateTool() {
     new THREE.Vector3(0, -1 * rotateToolSpecs.radius, 0),
     new THREE.Vector3(0,  1 * rotateToolSpecs.radius, 0)
   );
-  var lines = new THREE.LineSegments(cross, lineMaterial);
+  cross.computeLineDistances();
+  var lines = new THREE.LineSegments(cross, material);
   rotateTool.add(lines);
 
   var geometry = new THREE.RingGeometry( rotateToolSpecs.smallRingRadius, rotateToolSpecs.smallRingRadius - rotateToolSpecs.thickness , rotateToolSpecs.segments );
-  var material = new THREE.MeshBasicMaterial( { color: 0xffffff, side: THREE.DoubleSide } );
+  var material = new THREE.MeshBasicMaterial( { color: 0xaaaaaa, side: THREE.DoubleSide } );
   var smallRingLeft = new THREE.Mesh( geometry, material );
   var smallRingRight = smallRingLeft.clone();
   var smallRingTop = smallRingLeft.clone();

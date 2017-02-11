@@ -737,6 +737,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     }
     checkForCoplanarDragging = false;
     if (coplanarDragBegun) {
+      debugger;
       mergeExtensions();
       // Redo all bsps for any dragged items
       for (var pickedItem of pickedItems) {
@@ -1013,6 +1014,7 @@ function pickCoplanarGroup() {
     console.log('extruding from polygon:', polygon.uuid);
     extrusionParts = csgObject.extrudeFromPolygon(polygon, extrusionDepth);
     extrusion = extrusionParts.object;
+    extrusionParts.topFace.csgObject = extrusion;
     extrusion.assignUuids();
     console.log('picked face::', extrusionParts.topFace.uuid);
 
@@ -1031,16 +1033,29 @@ function pickCoplanarGroup() {
     parent.add(extrusion.mesh);
     csgObjects.push(extrusion);
     setupSelectMesh(extrusion);
-
+    extrusionParts.topFace.saveDistancesFromOriginPoint(coplanarDragStart);
+    setMeshVertexOffsets(extrusion, coplanarDragStart);
   }
   mergeParent = csgObject;
+
+  coplanarDragBegun = true;
+  coplanarDragTotal = new THREE.Vector3(0,0,0);
+  dragging = true;
+  checkForCoplanarDragging = false;
+
 }
 
-function movePolygon(polygon, csgObject, offset) {
+function setMeshVertexOffsets(csgObject, originPoint) {
   var vertices = csgObject.mesh.geometry.vertices;
-  var vertexPolygons;
-  polygon.translate(offset);
-  //console.log('plane post move:', polygon.plane.normal, polygon.plane.w);
+  for (vertex of vertices) {
+    vertex.offset = { x: vertex.x - originPoint.x, 
+                      y: vertex.y - originPoint.y,
+                      z: vertex.z - originPoint.z };
+  }
+}
+
+function setPolygonMeshFromOriginPoint(polygon, originPoint) {
+  var vertices = polygon.csgObject.mesh.geometry.vertices;
   var vertIndex, face;
   var allVertexIndexes = {};
   for (face of polygon.faces) {
@@ -1049,11 +1064,11 @@ function movePolygon(polygon, csgObject, offset) {
     allVertexIndexes[face.c] = true;
   }
   for (vertIndex in allVertexIndexes) {
-    vertices[vertIndex].x += offset.x;
-    vertices[vertIndex].y += offset.y;
-    vertices[vertIndex].z += offset.z;
+    vertices[vertIndex].x = originPoint.x + vertices[vertIndex].offset.x;
+    vertices[vertIndex].y = originPoint.y + vertices[vertIndex].offset.y;
+    vertices[vertIndex].z = originPoint.z + vertices[vertIndex].offset.z;
   }
-  csgObject.mesh.geometry.elementsNeedUpdate = true;
+  polygon.csgObject.mesh.geometry.elementsNeedUpdate = true;
 
 }
 
@@ -1180,10 +1195,6 @@ function updateCrosshair() {
     if (checkForCoplanarDragging) {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
         pickCoplanarGroup();
-        coplanarDragBegun = true;
-        coplanarDragTotal = new THREE.Vector3(0,0,0);
-        dragging = true;
-        checkForCoplanarDragging = false;
       }
     }        
 
@@ -1191,13 +1202,17 @@ function updateCrosshair() {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       var sumCtr = 0;
+      var crosshairVector = new THREE.Vector3(crosshair.position.x, crosshair.position.y, plane.position.z);
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
             if (coplanarDragBegun) {
+              var polygon = pickedItem.item;
               var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
-              var planeVector = new THREE.Vector3(pickedItem.item.plane.normal.x, pickedItem.item.plane.normal.y, pickedItem.item.plane.normal.z);
-              var projectedVector = projectOntoVector(diffVector, planeVector);
+              var planeVector = new THREE.Vector3(polygon.plane.normal.x, polygon.plane.normal.y, polygon.plane.normal.z);
+              //var projectedVector = projectOntoVector(diffVector, planeVector);
+              var projectedVector = projectOntoVector(crosshairVector, planeVector);
+              console.log(crosshairVector, planeVector, projectedVector);
               if (sumCtr++ == 0) {
                 coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
               }
@@ -1215,7 +1230,8 @@ function updateCrosshair() {
               } else {
                 adjustedVector = moveVector.sub(coplanarDragStart);
               }
-              movePolygon(pickedItem.item, pickedItem.csgObject, adjustedVector);
+              polygon.setVerticesFromOriginPoint(projectedVector);
+              setPolygonMeshFromOriginPoint(polygon, projectedVector);
             }
             break;
           case 'mesh':

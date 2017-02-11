@@ -31,7 +31,9 @@
 //  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
 //  [X] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
 //  [ ] Clean up all the messy code leftovers
-//  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane
+//  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
+//  [ ] 1) highlights on it when you hover 2) lock curson on it when you drag on it. 3) rotate it when you drag little circles 4) rotate picked objects around it 5) snap it to sectionline, and 
+//         rotate around section line
 //  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 

@@ -656,7 +656,7 @@ function setupCSG() {
   csgObjects = [];
 
   //var a = CSG.cube();
-  var a = CSG.cube({ radius:0.5 });
+  var a = CSG.cube({ radius:0.25 });
   var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
   //var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
   //b.translate(0.25,0.5,0.25);
@@ -719,7 +719,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
       case 'coplanarGroup':
         dragging = true;
         checkForCoplanarDragging = true;
-        coplanarDragStart = new THREE.Vector3( crosshair.position.x, crosshair.position.y, plane.position.z );
+        coplanarDragStart = selectableItem.pickPosition.clone();
         coplanarDraggable = selectableItem;
         break;
       case 'none':
@@ -923,7 +923,8 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
-function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
+function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) {
+  var coplanarGroup = highlightCenter.coplanarGroup;
   if (coplanarGroupHighlight) {
     parent.remove(coplanarGroupHighlight);
     coplanarGroupHighlight = undefined;
@@ -954,7 +955,8 @@ function createCoplanarGroupHighlight(coplanarGroup, csgObject) {
   selectableItem = { 
     type:'coplanarGroup', 
     item: coplanarGroup,
-    csgObject: csgObject
+    csgObject: csgObject,
+    pickPosition: pickPosition
   };
 
 }
@@ -1117,7 +1119,7 @@ function updatePickSquare() {
     pickSquare.position.z = plane.position.z + 0.01;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
-      createCoplanarGroupHighlight(highlightCenter.coplanarGroup, csgObject);
+      createCoplanarGroupHighlight(highlightCenter, pickSquare.position, csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
@@ -1190,6 +1192,8 @@ function updateCrosshair() {
     crosshair.position.x = Math.max(-1, Math.min(1, ( 2.0 * ((cursor.current.x + cursorAdjust.x) / (window.innerWidth  / 1.75)))  - 2.0));
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
+    addToDebugText(['crosshair: ', crosshair.position.x, crosshair.position.y, '<br>']);
+
     if (checkForCoplanarDragging) {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
         pickCoplanarGroup();
@@ -1202,10 +1206,8 @@ function updateCrosshair() {
       var sumCtr = 0;
       if (coplanarDragStart) {
         addToDebugText(['coplanarDragStart: ', coplanarDragStart.x, coplanarDragStart.y]);
-        addToDebugText(['<br>crosshair: ', crosshair.position.x, crosshair.position.y]);
       }
 
-      console.log('crosshairVector:', crosshairVector);
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
@@ -1216,27 +1218,28 @@ function updateCrosshair() {
               //var projectedVector = projectOntoVector(diffVector, planeVector);
               var crosshairVector = new THREE.Vector3(crosshair.position.x, crosshair.position.y, plane.position.z);
               var amountMoved = dist3slow(crosshairVector, coplanarDragStart);
-              crosshairVector.normalize();
-              var projectedVector = projectOntoVector(crosshairVector, planeVector);
-              projectedVector.multiplyScalar(amountMoved);
+              var normalizedCrosshairVector = crosshairVector.clone();
+              normalizedCrosshairVector.normalize();
+              var projectedVector = projectOntoVector(normalizedCrosshairVector, planeVector);
+              var scaledProjectedVector = projectedVector.clone();
+              scaledProjectedVector.multiplyScalar(amountMoved);
               addToDebugText(['<br>projectedVector: ', projectedVector.x, projectedVector.y]);
               addToDebugText(['<br>amountMoved: ', amountMoved]);
-              //console.log(crosshairVector, planeVector, projectedVector);
-              //if (sumCtr++ == 0) {
-              //coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
-              //}
-              //var moveVector = coplanarDragTotal.clone();
-              //moveVector.normalize();
-              //console.log('moveVector:', moveVector);
-              var projectedUnitVector = projectedVector.clone();
-              projectedUnitVector.normalize();
-              var check = projectedUnitVector.dot(planeVector);
-              addToDebugText(['<br>check: ', check]);
-              if (check <= 0) {                
-                projectedVector = coplanarDragStart.clone();
+
+              var check2 = crosshairVector.clone();
+              check2.sub(coplanarDragStart);
+              check2.normalize();
+              var check3 = planeVector.angleTo(check2) * RAD_TO_DEG;
+              //console.log('crosshairVector.x:', crosshairVector.x, 'coplanarDragStart.x:', coplanarDragStart.x);
+
+              addToDebugText(['<br>check2: ', check2.x,check2.y]);
+              addToDebugText(['<br>check3: ', check3]);
+              if (check3 >= 90) {
+                scaledProjectedVector = new THREE.Vector3(0,0,0);
               }
-              polygon.setVerticesFromBackups(projectedVector);
-              setPolygonMeshFromBackup(polygon, projectedVector);
+
+              polygon.setVerticesFromBackups(scaledProjectedVector);
+              setPolygonMeshFromBackup(polygon, scaledProjectedVector);
             }
             break;
           case 'mesh':

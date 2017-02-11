@@ -1106,7 +1106,6 @@ function updatePickSquare() {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
           } else {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][1].polygon.coplanarGroup;
-            //console.log('highlightCenter.coplanarGroup:',highlightCenter.coplanarGroup);
           }
         }          
       }
@@ -1222,21 +1221,19 @@ function updateCrosshair() {
               projectedVector.multiplyScalar(amountMoved);
               addToDebugText(['<br>projectedVector: ', projectedVector.x, projectedVector.y]);
               addToDebugText(['<br>amountMoved: ', amountMoved]);
-              console.log(crosshairVector, planeVector, projectedVector);
-              if (sumCtr++ == 0) {
-                coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
-              }
-              var moveVector = coplanarDragTotal.clone();
+              //console.log(crosshairVector, planeVector, projectedVector);
+              //if (sumCtr++ == 0) {
+              //coplanarDragTotal.addVectors(coplanarDragTotal, projectedVector);
+              //}
+              //var moveVector = coplanarDragTotal.clone();
               //moveVector.normalize();
               //console.log('moveVector:', moveVector);
-              var check = planeVector.dot(moveVector);
-              console.log('check:', check);
-              var adjustedVector;
-              if (check >= 0) {                
-                //console.log('moved polygon uuid:', pickedItem.item.uuid);
-                adjustedVector = projectedVector.clone();
-              } else {
-                adjustedVector = moveVector.sub(coplanarDragStart);
+              var projectedUnitVector = projectedVector.clone();
+              projectedUnitVector.normalize();
+              var check = projectedUnitVector.dot(planeVector);
+              addToDebugText(['<br>check: ', check]);
+              if (check <= 0) {                
+                projectedVector = coplanarDragStart.clone();
               }
               polygon.setVerticesFromBackups(projectedVector);
               setPolygonMeshFromBackup(polygon, projectedVector);

@@ -656,7 +656,7 @@ function setupCSG() {
   csgObjects = [];
 
   //var a = CSG.cube();
-  var a = CSG.cube({ radius:0.25 });
+  var a = CSG.cube({ radius:0.5 });
   var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
   //var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
   //b.translate(0.25,0.5,0.25);
@@ -1003,7 +1003,7 @@ function mergeExtensions() {
 
 function pickCoplanarGroup() {
   var extrusions = [], extrusion, extrusionParts;
-  var extrusionDepth = 0.02;
+  var extrusionDepth = COPLANAR_DRAG_TOLERANCE;
   var dragPoly;
   var coplanarGroup = coplanarDraggable.item;
   var csgObject = coplanarDraggable.csgObject;

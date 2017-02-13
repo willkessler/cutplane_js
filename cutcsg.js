@@ -134,14 +134,25 @@ var sectionMaterialDashed = new THREE.LineDashedMaterial({
   depthFunc: THREE.AlwaysDepth
 });
 
+// NOTA BENE: Two materials that both have AlwaysDepth will not work in the same scene. Only one 3d Object can have alwaysDepth at a time.
 var rotateToolMaterial = new THREE.LineDashedMaterial({
   color: 0xaaaaaa,
-  dashSize: .01,
+  dashSize: .015,
   gapSize: .01,
   linewidth: 1,
-  depthTest: false,
-  depthWrite: false,
-  depthFunc: THREE.AlwaysDepth
+  side: THREE.DoubleSide
+});
+
+var rotateToolRingMaterial = new THREE.LineDashedMaterial({
+  color: 0xffffff,
+  linewidth: 1,
+  side: THREE.DoubleSide
+});
+
+var rotateToolSelectedMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffff00,
+  linewidth: 1,
+  side: THREE.DoubleSide
 });
 
 var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
@@ -668,56 +679,83 @@ function setupSelectMesh(csgObject) {
 
 
 function setupRotateTool() {
-  var rotateToolSpecs = { 
-    radius: 0.2,
-    thickness: 0.01,
-    margin: -0.1,
-    segments: 100,
+  rotateTool = {
+    position: {},
+    specs: { 
+      radius: 0.2,
+      margin: 0,
+      segments: 100,
+      thickness: 0.09
+    }
   };
-  rotateToolSpecs.startingPos = 
-    { x: -1 * ROOM_SIZE + rotateToolSpecs.radius + rotateToolSpecs.margin, y: ROOM_SIZE - rotateToolSpecs.radius - rotateToolSpecs.margin };
-  rotateToolSpecs.smallRingRadius = rotateToolSpecs.radius * 0.2;
+  rotateTool.specs.startingPos = 
+    { x: -1 * ROOM_SIZE + rotateTool.specs.radius + rotateTool.specs.margin, y: ROOM_SIZE - rotateTool.specs.radius - rotateTool.specs.margin, z: crosshair.position.z };
+  rotateTool.specs.smallRingRadius = rotateTool.specs.radius * 0.2;
 
-  rotateTool = new THREE.Object3D();
-  var geometry = new THREE.RingGeometry( rotateToolSpecs.radius, rotateToolSpecs.radius - rotateToolSpecs.thickness , rotateToolSpecs.segments );
+  rotateTool.object3D = new THREE.Object3D();
+  var rToolObj = rotateTool.object3D;
   var material = new THREE.MeshBasicMaterial( { color: 0xaaaaaa, side: THREE.DoubleSide } );
-  var ring = new THREE.Mesh( geometry, material );
-  rotateTool.add( ring );
+  var geometry = new THREE.CircleGeometry( rotateTool.specs.radius, rotateTool.specs.segments );
+  geometry.vertices.shift();
+  geometry.computeLineDistances();
+  var ring = new THREE.Line( geometry, rotateToolMaterial );
+  rToolObj.add( ring );
 
   var cross = new THREE.Geometry();
   cross.vertices.push(
-    new THREE.Vector3(-1 * rotateToolSpecs.radius, 0, 0),
-    new THREE.Vector3( 1 * rotateToolSpecs.radius, 0, 0),
-    new THREE.Vector3(0, -1 * rotateToolSpecs.radius, 0),
-    new THREE.Vector3(0,  1 * rotateToolSpecs.radius, 0)
+    new THREE.Vector3(-1 * rotateTool.specs.radius, 0, 0),
+    new THREE.Vector3( 1 * rotateTool.specs.radius, 0, 0),
+    new THREE.Vector3(0, -1 * rotateTool.specs.radius, 0),
+    new THREE.Vector3(0,  1 * rotateTool.specs.radius, 0)
   );
   cross.computeLineDistances();
-  var lines = new THREE.LineSegments(cross, material);
-  rotateTool.add(lines);
+  var lines = new THREE.LineSegments(cross, rotateToolMaterial);
+  rToolObj.add(lines);
 
-  var geometry = new THREE.RingGeometry( rotateToolSpecs.smallRingRadius, rotateToolSpecs.smallRingRadius - rotateToolSpecs.thickness , rotateToolSpecs.segments );
-  var material = new THREE.MeshBasicMaterial( { color: 0xaaaaaa, side: THREE.DoubleSide } );
-  var smallRingLeft = new THREE.Mesh( geometry, material );
+  geometry = new THREE.CircleGeometry( rotateTool.specs.smallRingRadius , rotateTool.specs.segments );
+  geometry.vertices.shift();
+  geometry.computeLineDistances();
+
+  var smallRingCtr = new THREE.LineSegments( geometry, rotateToolMaterial );
+  rToolObj.add(smallRingCtr);
+
+  var smallRingLeft = smallRingCtr.clone();
   var smallRingRight = smallRingLeft.clone();
   var smallRingTop = smallRingLeft.clone();
   var smallRingBottom = smallRingLeft.clone();
-  smallRingLeft.position.x = -1 * rotateToolSpecs.radius;
-  rotateTool.add(smallRingLeft);
 
-  smallRingRight.position.x = rotateToolSpecs.radius;
-  rotateTool.add(smallRingRight);
+  smallRingLeft.position.x = -1 * rotateTool.specs.radius;
+  rToolObj.add(smallRingLeft);
 
-  smallRingTop.position.y =  1 * rotateToolSpecs.radius;
-  rotateTool.add(smallRingTop);
+  smallRingRight.position.x = rotateTool.specs.radius;
+  rToolObj.add(smallRingRight);
 
-  smallRingBottom.position.y = -1 * rotateToolSpecs.radius;
-  rotateTool.add(smallRingBottom);
+  smallRingTop.position.y =  1 * rotateTool.specs.radius;
+  rToolObj.add(smallRingTop);
 
-  rotateTool.position.x = rotateToolSpecs.startingPos.x;
-  rotateTool.position.y = rotateToolSpecs.startingPos.y;
-  rotateTool.position.z = 0.01;
+  smallRingBottom.position.y = -1 * rotateTool.specs.radius;
+  rToolObj.add(smallRingBottom);
 
-  plane.add(rotateTool);
+
+  geometry = new THREE.RingGeometry( rotateTool.specs.smallRingRadius ,rotateTool.specs.smallRingRadius - rotateTool.specs.thickness, rotateTool.specs.segments );
+  var yellowRing = new THREE.Line( geometry, rotateToolSelectedMaterial );
+  yellowRing.position.x = 0;
+
+  rToolObj.add(yellowRing);
+
+  rotateTool.hotSpots = { 
+    center: { x:  0, y: 0 },
+    sides:    [ { x:  0, y: rotateTool.specs.radius },
+                { x: -1 * rotateTool.specs.radius, y: 0 },
+                { x:  0, y: -1 * rotateTool.specs.radius },
+                { x:  rotateTool.specs.radius, y: 0 } ],
+    yellowRing : yellowRing
+  };
+
+  positionRotateTool(rotateTool.specs.startingPos);
+
+  plane.add(rToolObj);
+
 }
 
 
@@ -854,9 +892,9 @@ function drawSectionLineCSG() {
   cutSections = new THREE.Object3D();
   parent.add(cutSections);
 
+  var sectionSegments = new THREE.Geometry();
 
   for (var csgObject of csgObjects) {
-    var sectionSegments = new THREE.Geometry();
     var polygons = csgObject.polygons;
     csgObject.sectionEdges = {};
     sectionEdges = csgObject.sectionEdges;
@@ -903,84 +941,31 @@ function drawSectionLineCSG() {
       }
     }
 
-    if (sectionExists) {
-      sectionSegments.computeLineDistances();
-      segmentGroup = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
-      cutSections.add(segmentGroup);
-    }
+  }
+
+  if (sectionExists) {
+    sectionSegments.computeLineDistances();
+    segmentGroup = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
+    cutSections.add(segmentGroup);
+  }
 
 /*
-      //
-      // We can now get rid of all the rest of this since we're not making section loops any more
-      //
+  var geometry = new THREE.Geometry();
+  geometry.vertices.push(new THREE.Vector3(-0.5, 0, 0));
+  geometry.vertices.push(new THREE.Vector3(0, 0.5, 0));
+  geometry.vertices.push(new THREE.Vector3(0.5, 0, 0));
+  geometry.computeLineDistances();
+  var line = new THREE.Line(geometry, sectionMaterialDashed);
+  parent.add(line);
 
-      // Now start at final iKey on the sectionEdges array, and walk it to build up section lines 
-      var walked = {};
-      var numWalked = 0;
-      var currentIKey = finalIKey, nextIKey;
-      var startLoopIKey = finalIKey;
-      var cutSection = new THREE.Geometry();
-      var sectionCoord;
-      var sectionFace;
-      var endedCurrentLoop;
-      var coordsRaw;
-      var coords;
-
-      while (numWalked < sectionEdgesCount && currentIKey) {
-        coordsRaw = currentIKey.split('_');
-        coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
-        sectionCoord = new THREE.Vector3(coords[0], coords[1], plane.position.z + 0.01);
-        sectionFace = sectionEdges[currentIKey];
-        cutSection.vertices.push(sectionCoord);
-        numWalked++;
-        walked[currentIKey] = true;
-        
-        nextIKey = undefined;
-        for (var seChild of sectionEdges[currentIKey]) {
-          if (!walked.hasOwnProperty(seChild.point)) {
-            nextIKey = seChild.point;
-            break;
-          }
-        }
-        // If we got through one loop, we will not be able to advance. Scan through the section edges to find an unwalked starting point. 
-        endedCurrentLoop = false;
-        if (nextIKey == undefined) {
-          endedCurrentLoop = true;
-          // Find a candidate to start a new loop, if we can.
-          for (var seKey in sectionEdges) {
-            if (!walked.hasOwnProperty(seKey)) {
-              nextIKey = seKey;
-              break;
-            }
-          }
-        }
-
-        // To close the loop, add back the startIKey. 
-        if (endedCurrentLoop) {
-          coordsRaw = startLoopIKey.split('_');
-          coords = [ parseFloat(coordsRaw[0]), parseFloat(coordsRaw[1]) ];
-          sectionCoord = new THREE.Vector3(parseFloat(coords[0]), parseFloat(coords[1]), plane.position.z + 0.01);
-          cutSection.vertices.push(sectionCoord);
-
-          cutSection.computeLineDistances(); // Required for dashed lines cf http://stackoverflow.com/questions/35781346/three-linedashedmaterial-dashes-dont-work
-          var sectionPoly = new THREE.Line(cutSection, sectionMaterialDashed);
-          sectionPoly.csgObject = csgObject;
-          //cutSections.add(sectionPoly);
-
-          cutSection = new THREE.Geometry();
-          if (nextIKey) {
-            startLoopIKey = nextIKey;
-          }
-
-        }
-
-        // Advance from here on current loop or newly started loop 
-        currentIKey = nextIKey;
-      }
-    }
-  */
-
-  }
+  var geometry = new THREE.Geometry();
+  geometry.vertices.push(new THREE.Vector3(1.1, 0, 0));
+  geometry.vertices.push(new THREE.Vector3(0, -1.1, 0));
+  geometry.vertices.push(new THREE.Vector3(-1.1, 1.1, 0));
+  geometry.computeLineDistances();
+  var line = new THREE.Line(geometry, sectionMaterialDashed);
+  parent.add(line);
+*/
 }
 
 
@@ -1240,6 +1225,36 @@ function updateRoomView() {
   
 }
 
+function positionRotateTool(position) {
+  rotateTool.position.x = position.x;
+  rotateTool.position.y = position.y;
+
+  var rToolObj = rotateTool.object3D;
+  rToolObj.position.x = position.x;
+  rToolObj.position.y = position.y;
+}
+
+function updateRotateTool() {
+  var smallRingRadiusSquared = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
+  var distToSpot = dist2(crosshair.position,rotateTool.position);
+  var spot;
+  rotateTool.hotSpots.yellowRing.position.x = 10000;
+  if (distToSpot < smallRingRadiusSquared) {
+    console.log('Near rotateTool center');
+    rotateTool.hotSpots.yellowRing.position.x = 0;
+    rotateTool.hotSpots.yellowRing.position.y = 0;
+  } else {
+    for (var i in rotateTool.hotSpots.sides) {
+      spot = { x: rotateTool.position.x + rotateTool.hotSpots.sides[i].x, y: rotateTool.position.y + rotateTool.hotSpots.sides[i].y };
+      distToSpot = dist2(crosshair.position, spot);
+      if (distToSpot < smallRingRadiusSquared) {
+        rotateTool.hotSpots.yellowRing.position.x = rotateTool.hotSpots.sides[i].x;
+        rotateTool.hotSpots.yellowRing.position.y = rotateTool.hotSpots.sides[i].y;
+      }
+    }
+  }
+}
+
 // http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
 function updateCrosshair() {
   /* New algo: when user pauses for a few seconds, make this the new center of offsets and map from there, up to about 1/4 of window.innerWidth */
@@ -1262,6 +1277,8 @@ function updateCrosshair() {
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
     addToDebugText(['crosshair: ', crosshair.position.x, crosshair.position.y, '<br>']);
+
+    updateRotateTool();
 
     if (checkForCoplanarDragging) {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
@@ -1428,11 +1445,11 @@ function render() {
   rotatingRoom = window.cmdKeyPressed;
 
   checkWireFrameToggle();
+  drawSectionLineCSG();
   updateRoomView();
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
-  drawSectionLineCSG();
 
   renderDebugText();
 
@@ -1453,11 +1470,11 @@ scene.add( parent );
 
 setupHelp();
 setupCutplane();
+setupCrosshair();
+setupRotateTool();
 setupRoom();
 updateCutplaneProjectionVector();
-setupCrosshair();
 setupPickSquare();
-setupRotateTool();
 
 camera.position.set( 0, 0, 5);
 setupLights();

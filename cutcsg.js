@@ -230,6 +230,9 @@ function handleKeyDown(event) {
       break; // control key
     case 65: // "A" key, not used
       break;
+    case 82: // R key
+      toggleRotateTool();
+      break;
     case 87:
       window.wKeyPressed = true;
       break;
@@ -1234,6 +1237,15 @@ function positionRotateTool(position) {
   rToolObj.position.y = position.y;
 }
 
+function toggleRotateTool() {
+  var distToSpot = dist2(rotateTool.position, crosshair.position);
+  if (distToSpot < rotateTool.specs.smallRingRadius) {
+    positionRotateTool(rotateTool.specs.startingPos);
+  } else {
+    positionRotateTool(crosshair.position);
+  }
+}
+
 function updateRotateTool() {
   var smallRingRadiusSquared = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
   var distToSpot = dist2(crosshair.position,rotateTool.position);
@@ -1279,7 +1291,6 @@ function updateRotateTool() {
     if (!hotSpotShown) {
       spot = { x: rotateTool.position.x, y: rotateTool.position.y };
       distToSpot = Math.sqrt(dist2(crosshair.position, spot));
-      console.log('distToSpot:', distToSpot, 'radius:', specs.radius);
       if ((distToSpot > specs.radius - specs.smallRingRadius) &&
           (distToSpot <= specs.radius + specs.smallRingRadius) ) {
         // cf http://math.stackexchange.com/questions/127613/closest-point-on-circle-edge-from-point-outside-inside-the-circle

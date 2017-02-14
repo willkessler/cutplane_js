@@ -30,10 +30,17 @@
 //  [X] Make extrusion for polygon dragging and drag the whole coplanar group
 //  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
 //  [X] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
-//  [ ] Clean up all the messy code leftovers
+//  [X] Fix section line bug where sometimes it will jump over the surface
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
-//  [ ] 1) highlights on it when you hover 2) lock curson on it when you drag on it. 3) rotate it when you drag little circles 4) rotate picked objects around it 5) snap it to sectionline, and 
-//         rotate around section line
+//  [X]  *) snap it to sectionline
+//  [X]  *) R jumps rotate tool to cursor
+//  [X]  *) show highlights on it when you hover 
+//  [ ]  *) We have to put each object in an Object3D of its own so we can use RotateOnAxis;
+//  [ ]  *) rotate objects around section line
+//  [ ]  *) rotate picked objects around it 
+//  [ ]  *) lock cursor on it when you drag on it. 
+//  [ ]  *) rotate tool around Z axies when you drag side circles
+//  [ ] Clean up all the messy code leftovers
 //  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 
@@ -41,7 +48,6 @@
 //  [ ] Slice objects in half at cutplane
 //  [ ] Use mousewheel to zoom in and out
 //  [ ] Scale boxes to resize objects in any direction, when object is picked
-//  [ ] R to snap the rotate tool. investigate how to rotate an object. We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 //  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
 //  [ ] restore the tool chests with colors (toggle colors on/off)
@@ -50,7 +56,6 @@
 //      pay attention to the direction of the vector to make sure you're taking the inside angle every time. Alternatively, use raycasting approach.
 //  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] Separately compute faces that are in the plane and highlight them differently
-//  [ ] Fix section line bug where sometimes it will jump over the surface
 //  [ ] load/save models to cloud
 //  [ ] restore booleans manipulations within the UI cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
 //  [ ] cmd-z to undo drags
@@ -389,9 +394,10 @@ function projectOntoVector(v1, v2) {
   return(projection);
 }
 
+// Cribbed from the python version at http://paulbourke.net/geometry/rotate/PointRotate.py, which came from http://paulbourke.net/geometry/rotate/
+
 
 /* From http://stackoverflow.com/questions/23514274/three-js-2d-text-sprite-labels */
-
 function roundRect(context, x, y, w, h, r) { 
   context.beginPath(); 
   context.moveTo(x + r, y); 
@@ -635,8 +641,11 @@ function setupPickSquare() {
     depthFunc: THREE.AlwaysDepth,
     side: THREE.DoubleSide, 
     opacity: 1.0 } );
-  pickSquare = new THREE.Mesh( geometry, material );
-  parent.add(pickSquare);
+  pickSquare = { 
+    visible: false,
+    mesh: new THREE.Mesh( geometry, material ) 
+  };
+  parent.add(pickSquare.mesh);
 }
 
 function setupSelectMesh(csgObject) {
@@ -916,7 +925,6 @@ function drawSectionLineCSG() {
     csgObject.sectionEdges = {};
     sectionEdges = csgObject.sectionEdges;
     sectionExists = false;
-    var csgGeometry = csgObject.mesh.geometry;
     var polygons = csgObject.polygons;
     var polygon, polygonLength, vertices;
     for (var i = 0; i < polygons.length; ++i) {
@@ -1145,11 +1153,12 @@ function setPolygonMeshFromBackup(polygon, offset) {
 }
 
 function hidePickSquare() {
-  pickSquare.position.x = -1e10;
+  pickSquare.mesh.position.x = -1e10;
+  pickSquare.visible = false;
 }
 
 function updatePickSquare() {
-  var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
+  var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10, active: false };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
 
   if (!csgObjects) {
@@ -1180,6 +1189,7 @@ function updatePickSquare() {
           nearestMin = nearest.distance;
           highlightCenter.x = nearest.nearestPoint.x;
           highlightCenter.y = nearest.nearestPoint.y;
+          highlightCenter.active = true;
           if (ci == 0) {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
           } else {
@@ -1188,17 +1198,21 @@ function updatePickSquare() {
         }          
       }
     }
+  }
 
+  if (highlightCenter.active) {
     /* Render highlight if near a section edge */
-    pickSquare.position.x = highlightCenter.x;
-    pickSquare.position.y = highlightCenter.y;
-    pickSquare.position.z = plane.position.z + 0.01;
+    pickSquare.mesh.position.x = highlightCenter.x;
+    pickSquare.mesh.position.y = highlightCenter.y;
+    pickSquare.mesh.position.z = plane.position.z + 0.01;
+    pickSquare.visible = true;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
-      createCoplanarGroupHighlight(highlightCenter, pickSquare.position, csgObject);
+      createCoplanarGroupHighlight(highlightCenter, pickSquare.mesh.position, csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
+  
   if (coplanarGroupHighlight) {
     console.log('cleaning highlight');
     parent.remove(coplanarGroupHighlight);
@@ -1248,12 +1262,19 @@ function updateRoomView() {
 }
 
 function positionRotateTool(position) {
+  var rToolObj = rotateTool.object3D;
+  var finalPosition = position;
+
+  if (pickSquare.visible) {
+    finalPosition = pickSquare.mesh.position;
+  } else {
+    finalPosition = position;
+  }
   rotateTool.position.x = position.x;
   rotateTool.position.y = position.y;
+  rToolObj.position.x = finalPosition.x;
+  rToolObj.position.y = finalPosition.y;
 
-  var rToolObj = rotateTool.object3D;
-  rToolObj.position.x = position.x;
-  rToolObj.position.y = position.y;
 }
 
 function toggleRotateTool() {
@@ -1559,10 +1580,10 @@ scene.add( parent );
 setupHelp();
 setupCutplane();
 setupCrosshair();
+setupPickSquare();
 setupRotateTool();
 setupRoom();
 updateCutplaneProjectionVector();
-setupPickSquare();
 
 camera.position.set( 0, 0, 5);
 setupLights();

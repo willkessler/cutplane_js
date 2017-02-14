@@ -818,6 +818,12 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
       pickedItems = [];
     }
     switch (selectableItem.type) {
+      case 'rotateTool':
+        if (selectableItem.item == 'center') {
+          pickedItems.push(selectableItem);
+          dragging = true;
+        }
+        break;
       case 'mesh':
         selectableItem.selectMesh.material = selectMeshMaterialSelected;
         pickedItems.push(selectableItem);
@@ -852,6 +858,8 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     for (var pickedItem of pickedItems) {
       if (pickedItem.type == 'mesh') {
         pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
+      } else if (pickedItem.type == 'rotateTool') {
+        pickedItems = [];
       }
     }
   }    
@@ -1136,6 +1144,10 @@ function setPolygonMeshFromBackup(polygon, offset) {
 
 }
 
+function hidePickSquare() {
+  pickSquare.position.x = -1e10;
+}
+
 function updatePickSquare() {
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10 };
   var siblings, coordsArray, coord1, coord2, coordsRaw;
@@ -1161,9 +1173,10 @@ function updatePickSquare() {
       coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
       coordsArray.push(coord2);
 
+      var tolerance = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
       for (var ci = 0; ci < 4; ci += 2) {
         var nearest = distToSegmentSquared(crosshair.position,coordsArray[ci], coordsArray[ci+1])
-        if ((nearest.distance < nearestMin) && (nearest.distance < 0.005)) {
+        if ((nearest.distance < nearestMin) && (nearest.distance < tolerance)) {
           nearestMin = nearest.distance;
           highlightCenter.x = nearest.nearestPoint.x;
           highlightCenter.y = nearest.nearestPoint.y;
@@ -1253,58 +1266,68 @@ function toggleRotateTool() {
 }
 
 function updateRotateTool() {
-  var smallRingRadiusSquared = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
-  var distToSpot = dist2(crosshair.position,rotateTool.position);
-  var spot, hotSpotShown = false;
+  var spot;
   var specs = rotateTool.specs;
   var hotSpots = rotateTool.hotSpots;
   var yellowRing = hotSpots.yellowRing;
+  rotateTool.nearestHotSpot = 'none';
   yellowRing.position.x = 10000;
-  if (distToSpot < smallRingRadiusSquared) {
-    console.log('Near rotateTool center');
+  var distToSpot = Math.sqrt(dist2(crosshair.position,rotateTool.position));
+  if (distToSpot < specs.smallRingRadius) {
     yellowRing.position.x = 0;
     yellowRing.position.y = 0;
-  } else {
-    for (var i in hotSpots.sides) {
-      spot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
-      distToSpot = dist2(crosshair.position, spot);
-      if (distToSpot < smallRingRadiusSquared) {
-        yellowRing.position.x = hotSpots.sides[i].x;
-        yellowRing.position.y = hotSpots.sides[i].y;
-        hotSpotShown = true;
-        break;
-      }
+    rotateTool.nearestHotSpot = { which: 'center' };
+    if (distToSpot < specs.centerRingRadius) {
+      selectableItem = {
+        type: 'rotateTool',
+        item: 'center'
+      };
     }
-    spot = { x: rotateTool.position.x, y: rotateTool.position.y };
-    if (!hotSpotShown) {
-      if ((crosshair.position.x >= spot.x - specs.radius - specs.smallRingRadius) &&
-          (crosshair.position.x <= spot.x + specs.radius + specs.smallRingRadius) &&
-          (crosshair.position.y >= spot.y - specs.smallRingRadius) &&
-          (crosshair.position.y <= spot.y + specs.smallRingRadius)) {
-        yellowRing.position.x = crosshair.position.x - spot.x;
-        yellowRing.position.y = 0;
-        hotSpotShown = true;
-      } else if ((crosshair.position.y >= spot.y - specs.radius - specs.smallRingRadius) &&
-                 (crosshair.position.y <= spot.y + specs.radius + specs.smallRingRadius) &&
-                 (crosshair.position.x >= spot.x - specs.smallRingRadius) &&
-                 (crosshair.position.x <= spot.x + specs.smallRingRadius)) {
-        yellowRing.position.x = 0
-        yellowRing.position.y = crosshair.position.y - spot.y;
-        hotSpotShown = true;
-      }
-    }
-        
-    if (!hotSpotShown) {
-      spot = { x: rotateTool.position.x, y: rotateTool.position.y };
-      distToSpot = Math.sqrt(dist2(crosshair.position, spot));
-      if ((distToSpot > specs.radius - specs.smallRingRadius) &&
-          (distToSpot <= specs.radius + specs.smallRingRadius) ) {
-        // cf http://math.stackexchange.com/questions/127613/closest-point-on-circle-edge-from-point-outside-inside-the-circle
-        yellowRing.position.x = specs.radius * ((crosshair.position.x - spot.x) / distToSpot);
-        yellowRing.position.y = specs.radius * ((crosshair.position.y - spot.y) / distToSpot);
-      }
+    return(true);
+  }
+
+  for (var i in hotSpots.sides) {
+    spot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
+    distToSpot = Math.sqrt(dist2(crosshair.position, spot));
+    if (distToSpot < specs.smallRingRadius) {
+      yellowRing.position.x = hotSpots.sides[i].x;
+      yellowRing.position.y = hotSpots.sides[i].y;
+      rotateTool.nearestHotSpot = { which: 'corner', index: i };
+      return(true);
     }
   }
+  spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+  if ((crosshair.position.x >= spot.x - specs.radius - specs.smallRingRadius) &&
+      (crosshair.position.x <= spot.x + specs.radius + specs.smallRingRadius) &&
+      (crosshair.position.y >= spot.y - specs.smallRingRadius) &&
+      (crosshair.position.y <= spot.y + specs.smallRingRadius)) {
+    yellowRing.position.x = crosshair.position.x - spot.x;
+    yellowRing.position.y = 0;
+    rotateTool.nearestHotSpot = { which: 'x-axis' };
+    return(true);
+  }
+  if ((crosshair.position.y >= spot.y - specs.radius - specs.smallRingRadius) &&
+      (crosshair.position.y <= spot.y + specs.radius + specs.smallRingRadius) &&
+      (crosshair.position.x >= spot.x - specs.smallRingRadius) &&
+      (crosshair.position.x <= spot.x + specs.smallRingRadius)) {
+    yellowRing.position.x = 0
+    yellowRing.position.y = crosshair.position.y - spot.y;
+    rotateTool.nearestHotSpot = { which: 'y-axis' };
+    return(true);
+  }
+  
+  spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+  distToSpot = Math.sqrt(dist2(crosshair.position, spot));
+  if ((distToSpot > specs.radius - specs.smallRingRadius) &&
+      (distToSpot <= specs.radius + specs.smallRingRadius) ) {
+    // cf http://math.stackexchange.com/questions/127613/closest-point-on-circle-edge-from-point-outside-inside-the-circle
+    yellowRing.position.x = specs.radius * ((crosshair.position.x - spot.x) / distToSpot);
+    yellowRing.position.y = specs.radius * ((crosshair.position.y - spot.y) / distToSpot);
+    rotateTool.nearestHotSpot = { which: 'ring' };
+    return(true);
+  }
+
+  return(false);
 }
 
 // http://stackoverflow.com/questions/3437786/get-the-size-of-the-screen-current-web-page-and-browser-window
@@ -1329,8 +1352,6 @@ function updateCrosshair() {
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
     addToDebugText(['crosshair: ', crosshair.position.x, crosshair.position.y, '<br>']);
-
-    updateRotateTool();
 
     if (checkForCoplanarDragging) {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
@@ -1380,10 +1401,15 @@ function updateCrosshair() {
               setPolygonMeshFromBackup(polygon, scaledProjectedVector);
             }
             break;
+          case 'rotateTool':
+            console.log('dragging rotate tool');
+            positionRotateTool(crosshair.position);
+            break;
           case 'mesh':
-          default:
             pickedItem.item.mesh.geometry.translate(xDiff, yDiff, 0.0);
             pickedItem.item.translate(xDiff, yDiff, 0.0);
+            break;
+          default:
             break;
         }
       }
@@ -1414,8 +1440,15 @@ function updateCutplane() {
       if (dragging) {
         var zDiff = plane.position.z - prevPlaneZ;
         for (var pickedItem of pickedItems) {
-          pickedItem.item.mesh.geometry.translate(0,0, zDiff);
-          pickedItem.item.translate(0,0,zDiff);
+          switch (pickedItem.type) {
+            case 'rotateTool':
+              // do nothing
+              break;
+            case 'mesh':
+              pickedItem.item.mesh.geometry.translate(0,0, zDiff);
+              pickedItem.item.translate(0,0,zDiff);
+              break;
+          }
         }
         // console.log('Translating object in Z by:', zDiff);
       }
@@ -1444,21 +1477,24 @@ function updateSelectableItem() {
     selectableItem = { type: 'none' };
   }
 
-  if (!updatePickSquare()) {
-    for (csgObject of csgObjects) {
-      var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
-      if (csgObject.bsp) {
-        var inside = csgObject.bsp.pointInside(testPoint);
-        if (inside) {
-          // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
-          // now we can use csgObjectMesh.translate(x,y,z) to drag it around
-          selectableItem = { 
-            type:'mesh', 
-            item: csgObject,
-            selectMesh: csgObject.selectMesh          
-          };
-          selectableItem.selectMesh.position.x = 0;
-          break;
+  hidePickSquare();
+  if (!updateRotateTool()) {
+    if (!updatePickSquare()) {
+      for (csgObject of csgObjects) {
+        var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
+        if (csgObject.bsp) {
+          var inside = csgObject.bsp.pointInside(testPoint);
+          if (inside) {
+            // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
+            // now we can use csgObjectMesh.translate(x,y,z) to drag it around
+            selectableItem = { 
+              type:'mesh', 
+              item: csgObject,
+              selectMesh: csgObject.selectMesh          
+            };
+            selectableItem.selectMesh.position.x = 0;
+            break;
+          }
         }
       }
     }

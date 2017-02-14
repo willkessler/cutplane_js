@@ -1237,19 +1237,54 @@ function positionRotateTool(position) {
 function updateRotateTool() {
   var smallRingRadiusSquared = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
   var distToSpot = dist2(crosshair.position,rotateTool.position);
-  var spot;
-  rotateTool.hotSpots.yellowRing.position.x = 10000;
+  var spot, hotSpotShown = false;
+  var specs = rotateTool.specs;
+  var hotSpots = rotateTool.hotSpots;
+  var yellowRing = hotSpots.yellowRing;
+  yellowRing.position.x = 10000;
   if (distToSpot < smallRingRadiusSquared) {
     console.log('Near rotateTool center');
-    rotateTool.hotSpots.yellowRing.position.x = 0;
-    rotateTool.hotSpots.yellowRing.position.y = 0;
+    yellowRing.position.x = 0;
+    yellowRing.position.y = 0;
   } else {
-    for (var i in rotateTool.hotSpots.sides) {
-      spot = { x: rotateTool.position.x + rotateTool.hotSpots.sides[i].x, y: rotateTool.position.y + rotateTool.hotSpots.sides[i].y };
+    for (var i in hotSpots.sides) {
+      spot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
       distToSpot = dist2(crosshair.position, spot);
       if (distToSpot < smallRingRadiusSquared) {
-        rotateTool.hotSpots.yellowRing.position.x = rotateTool.hotSpots.sides[i].x;
-        rotateTool.hotSpots.yellowRing.position.y = rotateTool.hotSpots.sides[i].y;
+        yellowRing.position.x = hotSpots.sides[i].x;
+        yellowRing.position.y = hotSpots.sides[i].y;
+        hotSpotShown = true;
+        break;
+      }
+    }
+    spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+    if (!hotSpotShown) {
+      if ((crosshair.position.x >= spot.x - specs.radius - specs.smallRingRadius) &&
+          (crosshair.position.x <= spot.x + specs.radius + specs.smallRingRadius) &&
+          (crosshair.position.y >= spot.y - specs.smallRingRadius) &&
+          (crosshair.position.y <= spot.y + specs.smallRingRadius)) {
+        yellowRing.position.x = crosshair.position.x - spot.x;
+        yellowRing.position.y = 0;
+        hotSpotShown = true;
+      } else if ((crosshair.position.y >= spot.y - specs.radius - specs.smallRingRadius) &&
+                 (crosshair.position.y <= spot.y + specs.radius + specs.smallRingRadius) &&
+                 (crosshair.position.x >= spot.x - specs.smallRingRadius) &&
+                 (crosshair.position.x <= spot.x + specs.smallRingRadius)) {
+        yellowRing.position.x = 0
+        yellowRing.position.y = crosshair.position.y - spot.y;
+        hotSpotShown = true;
+      }
+    }
+        
+    if (!hotSpotShown) {
+      spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+      distToSpot = Math.sqrt(dist2(crosshair.position, spot));
+      console.log('distToSpot:', distToSpot, 'radius:', specs.radius);
+      if ((distToSpot > specs.radius - specs.smallRingRadius) &&
+          (distToSpot <= specs.radius + specs.smallRingRadius) ) {
+        // cf http://math.stackexchange.com/questions/127613/closest-point-on-circle-edge-from-point-outside-inside-the-circle
+        yellowRing.position.x = specs.radius * ((crosshair.position.x - spot.x) / distToSpot);
+        yellowRing.position.y = specs.radius * ((crosshair.position.y - spot.y) / distToSpot);
       }
     }
   }

@@ -124,36 +124,6 @@ var lineMaterialGreen = new THREE.LineBasicMaterial({
   color: 0x00ff00
 });
 
-var sectionMaterialDashed = new THREE.LineDashedMaterial({
-  color: 0xffff00,
-  dashSize: .04,
-  gapSize: .03,
-  linewidth: 1,
-  depthTest: false, // so that we can always see the section line
-  depthWrite: false,
-  depthFunc: THREE.AlwaysDepth
-});
-
-// NOTA BENE: Two materials that both have AlwaysDepth will not work in the same scene. Only one 3d Object can have alwaysDepth at a time.
-var rotateToolMaterial = new THREE.LineDashedMaterial({
-  color: 0xaaaaaa,
-  dashSize: .015,
-  gapSize: .01,
-  linewidth: 1,
-  side: THREE.DoubleSide
-});
-
-var rotateToolRingMaterial = new THREE.LineDashedMaterial({
-  color: 0xffffff,
-  linewidth: 1,
-  side: THREE.DoubleSide
-});
-
-var rotateToolSelectedMaterial = new THREE.MeshBasicMaterial({
-  color: 0xffff00,
-  linewidth: 1,
-  side: THREE.DoubleSide
-});
 
 var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
   shading: THREE.FlatShading,
@@ -687,18 +657,40 @@ function setupRotateTool() {
     specs: { 
       radius: 0.2,
       margin: 0,
-      segments: 100,
-      thickness: 0.09
+      segments: 25,
+      thickness: 0.005
     }
   };
-  rotateTool.specs.startingPos = 
-    { x: -1 * ROOM_SIZE + rotateTool.specs.radius + rotateTool.specs.margin, y: ROOM_SIZE - rotateTool.specs.radius - rotateTool.specs.margin, z: crosshair.position.z };
-  rotateTool.specs.smallRingRadius = rotateTool.specs.radius * 0.2;
+
+  // NOTA BENE: Materials have to be defined in the function where they're used if we want to use AlwaysDepth. Wtf, but whatever, no global materials here.
+  var rotateToolMaterial = new THREE.LineDashedMaterial({
+    color: 0xaaaaaa,
+    dashSize: .015,
+    gapSize: .005,
+    side: THREE.DoubleSide,
+    depthTest: true,
+    depthWrite: true,
+    depthFunc: THREE.AlwaysDepth
+  });
+
+  var rotateToolSelectedMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffff00,
+    side: THREE.DoubleSide,
+    depthTest: true,
+    depthWrite: true,
+    depthFunc: THREE.AlwaysDepth
+  });
+
+  var specs = rotateTool.specs;
+  specs.startingPos = 
+    { x: -1 * ROOM_SIZE + specs.radius + specs.margin, y: ROOM_SIZE - specs.radius - specs.margin, z: crosshair.position.z };
+  specs.smallRingRadius = specs.radius * 0.15;
+  specs.centerRingRadius = specs.smallRingRadius * 1.5;
 
   rotateTool.object3D = new THREE.Object3D();
   var rToolObj = rotateTool.object3D;
-  var material = new THREE.MeshBasicMaterial( { color: 0xaaaaaa, side: THREE.DoubleSide } );
-  var geometry = new THREE.CircleGeometry( rotateTool.specs.radius, rotateTool.specs.segments );
+
+  var geometry = new THREE.CircleGeometry( specs.radius, specs.segments );
   geometry.vertices.shift();
   geometry.computeLineDistances();
   var ring = new THREE.Line( geometry, rotateToolMaterial );
@@ -706,41 +698,46 @@ function setupRotateTool() {
 
   var cross = new THREE.Geometry();
   cross.vertices.push(
-    new THREE.Vector3(-1 * rotateTool.specs.radius, 0, 0),
-    new THREE.Vector3( 1 * rotateTool.specs.radius, 0, 0),
-    new THREE.Vector3(0, -1 * rotateTool.specs.radius, 0),
-    new THREE.Vector3(0,  1 * rotateTool.specs.radius, 0)
+    new THREE.Vector3(-1 * specs.radius, 0, 0),
+    new THREE.Vector3( 1 * specs.radius, 0, 0),
+    new THREE.Vector3(0, -1 * specs.radius, 0),
+    new THREE.Vector3(0,  1 * specs.radius, 0)
   );
   cross.computeLineDistances();
-  var lines = new THREE.LineSegments(cross, rotateToolMaterial);
+  var lines = new THREE.LineSegments(cross, rotateToolMaterial );
   rToolObj.add(lines);
 
-  geometry = new THREE.CircleGeometry( rotateTool.specs.smallRingRadius , rotateTool.specs.segments );
+  geometry = new THREE.CircleGeometry( specs.centerRingRadius , specs.segments );
   geometry.vertices.shift();
   geometry.computeLineDistances();
 
-  var smallRingCtr = new THREE.LineSegments( geometry, rotateToolMaterial );
+  var smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
   rToolObj.add(smallRingCtr);
 
+  geometry = new THREE.CircleGeometry( specs.smallRingRadius , specs.segments );
+  geometry.vertices.shift();
+  geometry.computeLineDistances();
+
+  smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
   var smallRingLeft = smallRingCtr.clone();
   var smallRingRight = smallRingLeft.clone();
   var smallRingTop = smallRingLeft.clone();
   var smallRingBottom = smallRingLeft.clone();
 
-  smallRingLeft.position.x = -1 * rotateTool.specs.radius;
+  smallRingLeft.position.x = -1 * specs.radius;
   rToolObj.add(smallRingLeft);
 
-  smallRingRight.position.x = rotateTool.specs.radius;
+  smallRingRight.position.x = specs.radius;
   rToolObj.add(smallRingRight);
 
-  smallRingTop.position.y =  1 * rotateTool.specs.radius;
+  smallRingTop.position.y =  1 * specs.radius;
   rToolObj.add(smallRingTop);
 
-  smallRingBottom.position.y = -1 * rotateTool.specs.radius;
+  smallRingBottom.position.y = -1 * specs.radius;
   rToolObj.add(smallRingBottom);
 
 
-  geometry = new THREE.RingGeometry( rotateTool.specs.smallRingRadius ,rotateTool.specs.smallRingRadius - rotateTool.specs.thickness, rotateTool.specs.segments );
+  geometry = new THREE.RingGeometry( (specs.smallRingRadius) - specs.thickness, (specs.smallRingRadius) ,  specs.segments );
   var yellowRing = new THREE.Line( geometry, rotateToolSelectedMaterial );
   yellowRing.position.x = 0;
 
@@ -748,14 +745,14 @@ function setupRotateTool() {
 
   rotateTool.hotSpots = { 
     center: { x:  0, y: 0 },
-    sides:    [ { x:  0, y: rotateTool.specs.radius },
-                { x: -1 * rotateTool.specs.radius, y: 0 },
-                { x:  0, y: -1 * rotateTool.specs.radius },
-                { x:  rotateTool.specs.radius, y: 0 } ],
+    sides:    [ { x:  0, y: specs.radius },
+                { x: -1 * specs.radius, y: 0 },
+                { x:  0, y: -1 * specs.radius },
+                { x:  specs.radius, y: 0 } ],
     yellowRing : yellowRing
   };
 
-  positionRotateTool(rotateTool.specs.startingPos);
+  positionRotateTool(specs.startingPos);
 
   plane.add(rToolObj);
 
@@ -885,6 +882,15 @@ function drawSectionLineCSG() {
     return;
   }
 
+  var sectionMaterialDashed = new THREE.LineDashedMaterial({
+    color: 0xffff00,
+    dashSize: .04,
+    gapSize: .03,
+    linewidth: 2,
+    depthTest: false, 
+    depthWrite: true,
+    depthFunc: THREE.AlwaysDepth // so that we can always see the section line. Materials using alwaysdepth MUST be defined in the function where they are used.
+  });
 
   var intersectionsLog = {};
   var facesChecked = 0;

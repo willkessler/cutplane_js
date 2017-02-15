@@ -660,6 +660,7 @@ function setupSelectMesh(csgObject) {
 }
 
 
+// Dashed circles example: https://jsfiddle.net/56sqt3rq/
 function setupRotateTool() {
   rotateTool = {
     position: {},
@@ -767,6 +768,31 @@ function setupRotateTool() {
 
 }
 
+function placeIntoCsgObjects(csgObject) {
+  parent.remove(csgObject.mesh);
+
+  var cGeo = csgObject.toMesh();
+  csgObject.bsp = new CSG.Node(csgObject.polygons);
+  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  csgObject.assignUuids();
+  csgObject.createCoplanarGroups();
+  console.log('coplanar groups:', csgObject.coplanarGroups);
+  parent.add(csgObject.mesh);
+
+  csgObjects.push(csgObject);
+  setupSelectMesh(csgObject);
+  firstRender = true;
+}
+
+
+function rotateIt(angle) {
+  var yAxis = new THREE.Vector3(0,1,0);
+  var csgObject = csgObjects.shift();
+  csgObject.rotateOnAxis(yAxis, angle * DEG_TO_RAD);
+
+  placeIntoCsgObjects(csgObject);
+}
+
 
 function setupCSG() {
   csgObjects = [];
@@ -778,17 +804,8 @@ function setupCSG() {
   //b.translate(0.25,0.5,0.25);
 
   var csgObject = a.subtract(b);
-  var cGeo = csgObject.toMesh();
-  csgObject.bsp = new CSG.Node(csgObject.polygons);
-  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-  csgObject.assignUuids();
-  csgObject.createCoplanarGroups();
-  console.log('coplanar groups:', csgObject.coplanarGroups);
-  parent.add(csgObject.mesh);
 
-  csgObjects.push(csgObject);
-  setupSelectMesh(csgObject);
-
+  placeIntoCsgObjects(csgObject);
   
 
   /*

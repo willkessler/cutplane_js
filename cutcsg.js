@@ -139,7 +139,7 @@ var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
 
 var polygonHighlightMaterial = new THREE.MeshStandardMaterial ( {
   shading: THREE.FlatShading,
-  color:0xffff00,
+  color:0x00ff00,
   side: THREE.DoubleSide,
   vertexColors: THREE.FaceColors // you need this if you want to change face colors later
 } );
@@ -393,8 +393,6 @@ function projectOntoVector(v1, v2) {
   projection.multiplyScalar(scalar);
   return(projection);
 }
-
-// Cribbed from the python version at http://paulbourke.net/geometry/rotate/PointRotate.py, which came from http://paulbourke.net/geometry/rotate/
 
 
 /* From http://stackoverflow.com/questions/23514274/three-js-2d-text-sprite-labels */
@@ -770,6 +768,7 @@ function setupRotateTool() {
 
 function placeIntoCsgObjects(csgObject) {
   parent.remove(csgObject.mesh);
+  parent.remove(csgObject.selectMesh);
 
   var cGeo = csgObject.toMesh();
   csgObject.bsp = new CSG.Node(csgObject.polygons);
@@ -1035,6 +1034,7 @@ function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) 
       geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
       //console.log('Created highlight vertex:', vertex.pos.x, vertex.pos.y, vertex.pos.z);
     }
+    console.log('highlight normal:', polygon.plane.normal);
     var face;
     for (var i = 2; i < vertices.length; ++i) {
       face = new THREE.Face3(base, base + i - 1, base + i);
@@ -1066,6 +1066,7 @@ function mergeExtensions() {
   _.each(csgObjects, function(obj) { 
     //console.log('Removing mesh for object:', obj);
     parent.remove(obj.mesh); 
+    parent.remove(obj.selectMesh);
   });
   var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
   csgObjects = _.difference(csgObjects, pickedObjects);
@@ -1412,10 +1413,10 @@ function updateCrosshair() {
               var polygon = pickedItem.item;
               var diffVector = new THREE.Vector3(xDiff, yDiff, 0);
               var planeVector = new THREE.Vector3(polygon.plane.normal.x, polygon.plane.normal.y, polygon.plane.normal.z);
-              //var projectedVector = projectOntoVector(diffVector, planeVector);
               var crosshairVector = new THREE.Vector3(crosshair.position.x, crosshair.position.y, plane.position.z);
               var amountMoved = dist3slow(crosshairVector, coplanarDragStart);
               var normalizedCrosshairVector = crosshairVector.clone();
+              normalizedCrosshairVector.sub(coplanarDragStart);
               normalizedCrosshairVector.normalize();
               var projectedVector = projectOntoVector(normalizedCrosshairVector, planeVector);
               var scaledProjectedVector = projectedVector.clone();
@@ -1605,6 +1606,7 @@ updateCutplaneProjectionVector();
 camera.position.set( 0, 0, 5);
 setupLights();
 setupCSG();
+rotateIt(90);
 
 render();
 

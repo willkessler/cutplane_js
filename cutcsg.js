@@ -31,6 +31,7 @@
 //  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
 //  [X] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
 //  [X] Fix section line bug where sometimes it will jump over the surface
+//  [ ] Picked items should indicate they're still picked, e.g. selectMesh should stay green
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
 //  [X]  *) snap it to sectionline
 //  [X]  *) R jumps rotate tool to cursor
@@ -650,7 +651,7 @@ function setupSelectMesh(csgObject) {
   var selectMesh = csgObject.mesh.clone();
   csgObject.selectMesh = selectMesh;
   selectMeshMaterialUnselected = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.BackSide } );
-  selectMeshMaterialSelected = new THREE.MeshBasicMaterial( { color: 0xff0000, side: THREE.BackSide } );
+  selectMeshMaterialSelected = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
   selectMesh.material = selectMeshMaterialUnselected;
   selectMesh.scale.multiplyScalar(1.04);
   selectMesh.position.x = 100000;
@@ -766,6 +767,29 @@ function setupRotateTool() {
 
 }
 
+// Save backup of meshes so we can reapply rotation while dragging on rotate tool. We reapply to avoid build up of rotation errors.
+function prepareForRotation() {
+  var csgObject;
+  selectableItem.hotSpot = rotateTool.nearestHotSpot.which;
+  pickedItems.unshift(selectableItem);
+  var nearestHotSpot = rotateTool.nearestHotSpot;
+  switch (nearestHotSpot.which) {
+    case 'x-axis':
+    case 'y-axis':
+      rotateTool.dragStart = nearestHotSpot.location;
+      rotateTool.dragStart = nearestHotSpot.location;
+      break;
+    default:
+      break;
+  }
+  for (var pickedItem of pickedItems) {
+    if (pickedItem.type == 'mesh') {
+      csgObject = pickedItem.item;
+      csgObject.backupMesh = csgObject.mesh.clone();
+    }
+  }
+}
+
 function placeIntoCsgObjects(csgObject) {
   parent.remove(csgObject.mesh);
   parent.remove(csgObject.selectMesh);
@@ -839,22 +863,23 @@ function setupCSG() {
 
 function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
-    if (!shiftKeyDown) {
-      pickedItems = [];
-    }
     switch (selectableItem.type) {
       case 'rotateTool':
-        if (selectableItem.item == 'center') {
-          pickedItems.push(selectableItem);
-          dragging = true;
-        }
+        prepareForRotation();
+        dragging = true;
         break;
       case 'mesh':
+        if (!shiftKeyDown) {
+          pickedItems = [];
+        }
         selectableItem.selectMesh.material = selectMeshMaterialSelected;
         pickedItems.push(selectableItem);
         dragging = true;
         break;
       case 'coplanarGroup':
+        if (!shiftKeyDown) {
+          pickedItems = [];
+        }
         dragging = true;
         checkForCoplanarDragging = true;
         coplanarDragStart = selectableItem.pickPosition.clone();
@@ -1304,7 +1329,26 @@ function toggleRotateTool() {
   }
 }
 
-function updateRotateTool() {
+function updateRotations() {
+  var hotSpots = rotateTool.hotSpots;
+  var angle = 180 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / rotateTool.specs.radius);
+  var angleRadians = angle * DEG_TO_RAD;
+  var newMesh, csgObject;
+  var axisVector = new THREE.Vector3(0,1,0);
+  for (var pickedItem of pickedItems) {
+    if (pickedItem.type == 'mesh') {
+      csgObject = pickedItem.item;
+      console.log('updating rotation of item:', csgObject);
+      newMesh = csgObject.backupMesh.clone();
+      newMesh.rotateOnAxis(axisVector, angleRadians);
+      parent.remove(csgObject.mesh);
+      csgObject.mesh = newMesh;
+      parent.add(csgObject.mesh);      
+    }
+  }
+}
+
+function updateRotateTool(conditions) {
   var spot;
   var specs = rotateTool.specs;
   var hotSpots = rotateTool.hotSpots;
@@ -1317,10 +1361,7 @@ function updateRotateTool() {
     yellowRing.position.y = 0;
     rotateTool.nearestHotSpot = { which: 'center' };
     if (distToSpot < specs.centerRingRadius) {
-      selectableItem = {
-        type: 'rotateTool',
-        item: 'center'
-      };
+      selectableItem = { type: 'rotateTool' };
     }
     return(true);
   }
@@ -1332,17 +1373,50 @@ function updateRotateTool() {
       yellowRing.position.x = hotSpots.sides[i].x;
       yellowRing.position.y = hotSpots.sides[i].y;
       rotateTool.nearestHotSpot = { which: 'corner', index: i };
+      selectableItem = { type: 'rotateTool' };
       return(true);
     }
   }
   spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+  if (conditions && conditions.lock) {
+    if (conditions.lock == 'x-axis') {
+      yellowRing.position.y = 0;
+      if (crosshair.position.x >= spot.x + specs.radius) {
+        yellowRing.position.x = specs.radius;
+        return(true);
+      }
+      if (crosshair.position.x <= spot.x - specs.radius) {
+        yellowRing.position.x = -1 * specs.radius;
+        return(true);
+      }
+      yellowRing.position.x = crosshair.position.x - spot.x;
+      yellowRing.position.y = 0;
+      return(true);
+    } else if (conditions.lock == 'y-axis') {
+      yellowRing.position.x = 0;
+      if (crosshair.position.y >= spot.y + specs.radius) {
+        yellowRing.position.y = specs.radius;
+        return(true);
+      }
+      if (crosshair.position.y <= spot.y - specs.radius) {
+        yellowRing.position.y = -1 * specs.radius;
+        return(true);
+      }
+      yellowRing.position.x = 0;
+      yellowRing.position.y = crosshair.position.y - spot.y;
+      return(true);
+    }
+
+  }
+
   if ((crosshair.position.x >= spot.x - specs.radius - specs.smallRingRadius) &&
       (crosshair.position.x <= spot.x + specs.radius + specs.smallRingRadius) &&
       (crosshair.position.y >= spot.y - specs.smallRingRadius) &&
       (crosshair.position.y <= spot.y + specs.smallRingRadius)) {
     yellowRing.position.x = crosshair.position.x - spot.x;
     yellowRing.position.y = 0;
-    rotateTool.nearestHotSpot = { which: 'x-axis' };
+    rotateTool.nearestHotSpot = { which: 'x-axis', location: yellowRing.position.x };
+    selectableItem = { type: 'rotateTool' };
     return(true);
   }
   if ((crosshair.position.y >= spot.y - specs.radius - specs.smallRingRadius) &&
@@ -1351,7 +1425,8 @@ function updateRotateTool() {
       (crosshair.position.x <= spot.x + specs.smallRingRadius)) {
     yellowRing.position.x = 0
     yellowRing.position.y = crosshair.position.y - spot.y;
-    rotateTool.nearestHotSpot = { which: 'y-axis' };
+    rotateTool.nearestHotSpot = { which: 'y-axis', location: yellowRing.position.y };
+    selectableItem = { type: 'rotateTool' };
     return(true);
   }
   
@@ -1406,6 +1481,7 @@ function updateCrosshair() {
         addToDebugText(['coplanarDragStart: ', coplanarDragStart.x, coplanarDragStart.y]);
       }
 
+      var terminateEarly = false;
       for (var pickedItem of pickedItems) {
         switch (pickedItem.type) {
           case 'polygon':
@@ -1442,7 +1518,24 @@ function updateCrosshair() {
             break;
           case 'rotateTool':
             console.log('dragging rotate tool');
-            positionRotateTool(crosshair.position);
+            switch (pickedItem.hotSpot) {
+              case 'x-axis':
+                //console.log('dragging along x-axis');
+                updateRotateTool({ lock: 'x-axis' });
+                updateRotations();
+                terminateEarly = true;
+                break;
+              case 'y-axis':
+                //console.log('dragging along y-axis');
+                updateRotateTool({ lock: 'y-axis' });
+                updateRotations();
+                terminateEarly = true;
+                break;
+              case 'center':
+              default:
+                positionRotateTool(crosshair.position);
+                break;
+            }
             break;
           case 'mesh':
             pickedItem.item.mesh.geometry.translate(xDiff, yDiff, 0.0);
@@ -1450,6 +1543,9 @@ function updateCrosshair() {
             break;
           default:
             break;
+        }
+        if (terminateEarly) {
+          break;
         }
       }
       // console.log('Translating object by:', xDiff, yDiff);
@@ -1606,7 +1702,6 @@ updateCutplaneProjectionVector();
 camera.position.set( 0, 0, 5);
 setupLights();
 setupCSG();
-rotateIt(90);
 
 render();
 

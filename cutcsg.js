@@ -76,6 +76,11 @@ var POINT_ON_LINE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 var COPLANAR_DRAG_TOLERANCE = 0.0015;
+var SELECT_STATUSES = {
+  'HIDDEN' : 0,
+  'SELECTABLE' : 1,
+  'PICKED' : 2
+}
 
 var parent;
 var plane;
@@ -88,8 +93,9 @@ var controls;
 var vertices;
 var faces;
 var pickSquare;
-var selectMeshMaterialUnselected;
-var selectMeshMaterialSelected;
+var selectMeshMaterialSelectable;
+var selectMeshMaterialPicked;
+var selectMeshMaterialPickedAndSelectable;
 
 var selectableItem = { type: 'none' };
 var pickedItems = [];
@@ -150,6 +156,12 @@ var csgObjectMaterialWire = new THREE.MeshBasicMaterial ( {
   color:0xffffff,
   wireframe: true
 } );
+
+var SELECTMESH_MATERIALS = [];
+SELECTMESH_MATERIALS[1] = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.BackSide } );
+SELECTMESH_MATERIALS[2] = new THREE.MeshBasicMaterial( { color: 0x005500, side: THREE.BackSide } );
+SELECTMESH_MATERIALS[3] = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+
 
 // -------------------------------------------------------------------------------------------------------------
 // Setup
@@ -647,17 +659,6 @@ function setupPickSquare() {
   parent.add(pickSquare.mesh);
 }
 
-function setupSelectMesh(csgObject) {
-  var selectMesh = csgObject.mesh.clone();
-  csgObject.selectMesh = selectMesh;
-  selectMeshMaterialUnselected = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.BackSide } );
-  selectMeshMaterialSelected = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
-  selectMesh.material = selectMeshMaterialUnselected;
-  selectMesh.scale.multiplyScalar(1.04);
-  selectMesh.position.x = 100000;
-  parent.add(selectMesh);
-}
-
 
 // Dashed circles example: https://jsfiddle.net/56sqt3rq/
 function setupRotateTool() {
@@ -783,7 +784,7 @@ function prepareForRotation() {
       break;
   }
   for (var pickedItem of pickedItems) {
-    if (pickedItem.type == 'mesh') {
+    if (pickedItem.type == 'csg') {
       csgObject = pickedItem.item;
       csgObject.backupMesh = csgObject.mesh.clone();
     }
@@ -792,9 +793,9 @@ function prepareForRotation() {
 
 function placeIntoCsgObjects(csgObject) {
   parent.remove(csgObject.mesh);
-  parent.remove(csgObject.selectMesh);
 
   var cGeo = csgObject.toMesh();
+  csgObject.saveVertexBackups();
   csgObject.bsp = new CSG.Node(csgObject.polygons);
   csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
   csgObject.assignUuids();
@@ -803,7 +804,7 @@ function placeIntoCsgObjects(csgObject) {
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
-  setupSelectMesh(csgObject);
+  csgObject.setupSelectMesh(parent);
   firstRender = true;
 }
 
@@ -845,7 +846,7 @@ function setupCSG() {
   parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
-  setupSelectMesh(csgObject);
+  csgObject.setupSelectMesh(parent);
   */
 
 
@@ -857,6 +858,11 @@ function setupCSG() {
 // Main interaction functions
 // --------------------------------------------------------------------------------
 
+function pickSelectableCSG() {
+  var csgObject = selectableItem.item;
+  csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.PICKED });
+  pickedItems.push(selectableItem);
+}
 
 
 // Shiftkey: http://stackoverflow.com/questions/3781142/jquery-or-javascript-how-determine-if-shift-key-being-pressed-while-clicking-an
@@ -868,12 +874,11 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         prepareForRotation();
         dragging = true;
         break;
-      case 'mesh':
+      case 'csg':
         if (!shiftKeyDown) {
           pickedItems = [];
         }
-        selectableItem.selectMesh.material = selectMeshMaterialSelected;
-        pickedItems.push(selectableItem);
+        pickSelectableCSG(selectableItem.item);
         dragging = true;
         break;
       case 'coplanarGroup':
@@ -893,10 +898,11 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
   } else {
     dragging = false;
     switch (selectableItem.type) {
-      case 'mesh':
-        selectableItem.selectMesh.material = selectMeshMaterialUnselected;
+      case 'csg':
         break;
       case 'polygon':
+        break;
+      case 'rotateTool':
         break;
     }
     checkForCoplanarDragging = false;
@@ -906,7 +912,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     }
     // Redo all bsps for any dragged items
     for (var pickedItem of pickedItems) {
-      if (pickedItem.type == 'mesh') {
+      if (pickedItem.type == 'csg') {
         pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
       } else if (pickedItem.type == 'rotateTool') {
         pickedItems = [];
@@ -1091,7 +1097,6 @@ function mergeExtensions() {
   _.each(csgObjects, function(obj) { 
     //console.log('Removing mesh for object:', obj);
     parent.remove(obj.mesh); 
-    parent.remove(obj.selectMesh);
   });
   var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
   csgObjects = _.difference(csgObjects, pickedObjects);
@@ -1101,7 +1106,7 @@ function mergeExtensions() {
   fullyMergedObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
   fullyMergedObject.assignUuids();
   fullyMergedObject.createCoplanarGroups();
-  setupSelectMesh(fullyMergedObject);
+  fullyMergedObject.setupSelectMesh(parent);
 
   for (var i in csgObjects) {
     var csgObject = csgObjects[i];
@@ -1156,7 +1161,7 @@ function pickCoplanarGroup() {
     extrusion.createCoplanarGroups();
     parent.add(extrusion.mesh);
     csgObjects.push(extrusion);
-    setupSelectMesh(extrusion);
+    extrusion.setupSelectMesh(parent);
     extrusion.saveVertexBackups();
     saveMeshVertices(extrusion);
   }
@@ -1335,15 +1340,17 @@ function updateRotations() {
   var angleRadians = angle * DEG_TO_RAD;
   var newMesh, csgObject;
   var axisVector = new THREE.Vector3(0,1,0);
+  var cGeo;
   for (var pickedItem of pickedItems) {
-    if (pickedItem.type == 'mesh') {
+    if (pickedItem.type == 'csg') {
       csgObject = pickedItem.item;
       console.log('updating rotation of item:', csgObject);
-      newMesh = csgObject.backupMesh.clone();
-      newMesh.rotateOnAxis(axisVector, angleRadians);
+      csgObject.rotateOnAxis(axisVector, angleRadians);
+      cGeo = csgObject.toMesh();
       parent.remove(csgObject.mesh);
-      csgObject.mesh = newMesh;
+      csgObject.mesh = new THREE.Mesh(cGeo, csgObjectMaterialFlat);
       parent.add(csgObject.mesh);      
+      csgObject.setupSelectMesh(parent);
     }
   }
 }
@@ -1537,7 +1544,7 @@ function updateCrosshair() {
                 break;
             }
             break;
-          case 'mesh':
+          case 'csg':
             pickedItem.item.mesh.geometry.translate(xDiff, yDiff, 0.0);
             pickedItem.item.translate(xDiff, yDiff, 0.0);
             break;
@@ -1579,7 +1586,7 @@ function updateCutplane() {
             case 'rotateTool':
               // do nothing
               break;
-            case 'mesh':
+            case 'csg':
               pickedItem.item.mesh.geometry.translate(0,0, zDiff);
               pickedItem.item.translate(0,0,zDiff);
               break;
@@ -1598,14 +1605,13 @@ function updateCursorTracking() {
   cursor.last.y = cursor.current.y;
 }
 
+
 function updateSelectableItem() {
   var selectMesh;
 
   // First move away any previously displayed selectable highlight
   if (selectableItem) {
-    if (selectableItem.type == 'mesh') {
-      selectMesh = selectableItem.selectMesh;
-      selectMesh.position.x = 10000;
+    if (selectableItem.type == 'csg') {
     } else if (selectableItem.type == 'coplanarGroup') {
       // do nothing
     }
@@ -1617,19 +1623,25 @@ function updateSelectableItem() {
     if (!updatePickSquare()) {
       for (csgObject of csgObjects) {
         var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
+        selectMesh = csgObject.selectMesh;
+        var selectability = false;
         if (csgObject.bsp) {
           var inside = csgObject.bsp.pointInside(testPoint);
           if (inside) {
             // console.log('inside section line, crosshair:', crosshair.position.x, crosshair.position.y);
             // now we can use csgObjectMesh.translate(x,y,z) to drag it around
             selectableItem = { 
-              type:'mesh', 
-              item: csgObject,
-              selectMesh: csgObject.selectMesh          
+              type:'csg', 
+              item: csgObject
             };
-            selectableItem.selectMesh.position.x = 0;
+            csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.SELECTABLE });
+            console.log('selectMeshstatus:', csgObject.selectMesh.status);
+            selectability = true;
             break;
           }
+        }
+        if (!selectability) {
+          csgObject.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.SELECTABLE });
         }
       }
     }

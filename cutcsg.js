@@ -77,9 +77,9 @@ var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 var COPLANAR_DRAG_TOLERANCE = 0.0015;
 var SELECT_STATUSES = {
-  'HIDDEN' : 0,
-  'SELECTABLE' : 1,
-  'PICKED' : 2
+  'HIDDEN' : 0x00,
+  'SELECTABLE' : 0x01,
+  'PICKED' : 0x02
 }
 
 var parent;
@@ -158,9 +158,9 @@ var csgObjectMaterialWire = new THREE.MeshBasicMaterial ( {
 } );
 
 var SELECTMESH_MATERIALS = [];
-SELECTMESH_MATERIALS[1] = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.BackSide } );
-SELECTMESH_MATERIALS[2] = new THREE.MeshBasicMaterial( { color: 0x005500, side: THREE.BackSide } );
-SELECTMESH_MATERIALS[3] = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+SELECTMESH_MATERIALS[1] = new THREE.MeshBasicMaterial( { color: 0XFFFF00, side: THREE.BackSide } );
+SELECTMESH_MATERIALS[2] = new THREE.MeshBasicMaterial( { color: 0X00CC00, side: THREE.BackSide } );
+SELECTMESH_MATERIALS[3] = new THREE.MeshBasicMaterial( { color: 0X00FF00, side: THREE.BackSide } );
 
 
 // -------------------------------------------------------------------------------------------------------------
@@ -867,6 +867,13 @@ function pickSelectableCSG() {
 
 // Shiftkey: http://stackoverflow.com/questions/3781142/jquery-or-javascript-how-determine-if-shift-key-being-pressed-while-clicking-an
 
+function unpickAllItems() {
+  for (var pickedItem of pickedItems) {
+    pickedItem.item.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.PICKED });
+  }
+  pickedItems = [];
+}
+
 function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
     switch (selectableItem.type) {
@@ -883,7 +890,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         break;
       case 'coplanarGroup':
         if (!shiftKeyDown) {
-          pickedItems = [];
+          unpickAllItems();
         }
         dragging = true;
         checkForCoplanarDragging = true;
@@ -892,8 +899,10 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         break;
       case 'none':
       default:
-        dragging = false;
-        pickedItems = [];
+        if (!shiftKeyDown) {
+          dragging = false;
+          unpickAllItems();
+        }
     }
   } else {
     dragging = false;
@@ -1097,6 +1106,7 @@ function mergeExtensions() {
   _.each(csgObjects, function(obj) { 
     //console.log('Removing mesh for object:', obj);
     parent.remove(obj.mesh); 
+    parent.remove(mergeParent.selectMesh);
   });
   var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
   csgObjects = _.difference(csgObjects, pickedObjects);

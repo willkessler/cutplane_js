@@ -771,13 +771,12 @@ function setupRotateTool() {
 // Save backup of meshes so we can reapply rotation while dragging on rotate tool. We reapply to avoid build up of rotation errors.
 function prepareForRotation() {
   var csgObject;
-  selectableItem.hotSpot = rotateTool.nearestHotSpot.which;
-  pickedItems.unshift(selectableItem);
   var nearestHotSpot = rotateTool.nearestHotSpot;
+  selectableItem.hotSpot = nearestHotSpot.which;
+  pickedItems.unshift(selectableItem); // put the rotatetool at the front of the picked items list
   switch (nearestHotSpot.which) {
     case 'x-axis':
     case 'y-axis':
-      rotateTool.dragStart = nearestHotSpot.location;
       rotateTool.dragStart = nearestHotSpot.location;
       break;
     default:
@@ -786,7 +785,7 @@ function prepareForRotation() {
   for (var pickedItem of pickedItems) {
     if (pickedItem.type == 'csg') {
       csgObject = pickedItem.item;
-      csgObject.backupMesh = csgObject.mesh.clone();
+      csgObject.saveVertexBackups();
     }
   }
 }
@@ -869,7 +868,9 @@ function pickSelectableCSG() {
 
 function unpickAllItems() {
   for (var pickedItem of pickedItems) {
-    pickedItem.item.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.PICKED });
+    if (pickedItem.type == 'csg') {
+      pickedItem.item.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.PICKED });
+    }
   }
   pickedItems = [];
 }
@@ -878,7 +879,12 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
     switch (selectableItem.type) {
       case 'rotateTool':
-        prepareForRotation();
+        if (rotateTool.nearestHotSpot.which != 'corner') {
+          if (rotateTool.nearestHotSpot.which == 'center') {
+            unpickAllItems();
+          }
+          prepareForRotation();
+        }
         dragging = true;
         break;
       case 'csg':
@@ -906,6 +912,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     }
   } else {
     dragging = false;
+    unpickAllAfter = false;
     switch (selectableItem.type) {
       case 'csg':
         break;
@@ -918,15 +925,17 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
     if (coplanarDragBegun) {
       mergeExtensions();
       coplanarDragBegun = false;
+      unpickAllAfter = true;
     }
     // Redo all bsps for any dragged items
     for (var pickedItem of pickedItems) {
       if (pickedItem.type == 'csg') {
         pickedItem.item.bsp = new CSG.Node(pickedItem.item.polygons);
-      } else if (pickedItem.type == 'rotateTool') {
-        pickedItems = [];
       }
     }
+    if (unpickAllAfter) {
+      unpickAllItems();
+    }      
   }    
 }
 
@@ -1074,7 +1083,7 @@ function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) 
       geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
       //console.log('Created highlight vertex:', vertex.pos.x, vertex.pos.y, vertex.pos.z);
     }
-    console.log('highlight normal:', polygon.plane.normal);
+    //console.log('highlight normal:', polygon.plane.normal);
     var face;
     for (var i = 2; i < vertices.length; ++i) {
       face = new THREE.Face3(base, base + i - 1, base + i);
@@ -1148,7 +1157,8 @@ function pickCoplanarGroup() {
 
   console.log('picked coplanar group');
 
-  pickedItems = []; // clear picked coplanar group. this should be smarter and clear the the currently picked coplanarGroup
+  unpickAllItems();
+
   for (var polygon of coplanarGroup) {
     console.log('extruding from polygon:', polygon.uuid);
     extrusionParts = csgObject.extrudeFromPolygon(polygon, extrusionDepth);
@@ -1344,18 +1354,32 @@ function toggleRotateTool() {
   }
 }
 
+// Bugs:
+// object jumps around if previously translated, when beginning to rotate
+// object does not stay picked while rotating
+
 function updateRotations() {
   var hotSpots = rotateTool.hotSpots;
-  var angle = 180 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / rotateTool.specs.radius);
+  var nearestHotSpot = rotateTool.nearestHotSpot;
+
+  console.log(hotSpots.yellowRing.position.x, rotateTool.dragStart);
+  if (nearestHotSpot.which == 'x-axis' || nearestHotSpot == 'none') { // temporary hack
+    var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
+    var axisVector = new THREE.Vector3(0,1,0);
+  } else if (nearestHotSpot.which == 'y-axis') {
+    var angle = 360 * ((hotSpots.yellowRing.position.y - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
+    var axisVector = new THREE.Vector3(1,0,0);
+  }
   var angleRadians = angle * DEG_TO_RAD;
   var newMesh, csgObject;
-  var axisVector = new THREE.Vector3(0,1,0);
+  axisVector.normalize();
   var cGeo;
   for (var pickedItem of pickedItems) {
     if (pickedItem.type == 'csg') {
       csgObject = pickedItem.item;
       console.log('updating rotation of item:', csgObject);
-      csgObject.rotateOnAxis(axisVector, angleRadians);
+      var origin = new CSG.Vector(rotateTool.position.x, rotateTool.position.y, plane.position.z);
+      csgObject.rotateOnAxis(origin, axisVector, angleRadians);
       cGeo = csgObject.toMesh();
       parent.remove(csgObject.mesh);
       csgObject.mesh = new THREE.Mesh(cGeo, csgObjectMaterialFlat);
@@ -1483,6 +1507,8 @@ function updateCrosshair() {
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
     addToDebugText(['crosshair: ', crosshair.position.x, crosshair.position.y, '<br>']);
+    addToDebugText(['nearestHotSpot: ', rotateTool.nearestHotSpot, '<br>']);
+    
 
     if (checkForCoplanarDragging) {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
@@ -1547,6 +1573,9 @@ function updateCrosshair() {
                 updateRotateTool({ lock: 'y-axis' });
                 updateRotations();
                 terminateEarly = true;
+                break;
+              case 'corner':
+                // We will rotate on z eventually here
                 break;
               case 'center':
               default:
@@ -1645,7 +1674,7 @@ function updateSelectableItem() {
               item: csgObject
             };
             csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.SELECTABLE });
-            console.log('selectMeshstatus:', csgObject.selectMesh.status);
+            //console.log('selectMeshstatus:', csgObject.selectMesh.status);
             selectability = true;
             break;
           }

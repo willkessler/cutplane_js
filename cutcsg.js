@@ -669,7 +669,8 @@ function setupRotateTool() {
       margin: 0,
       segments: 25,
       thickness: 0.005
-    }
+    },
+    nearestHotSpot: { which: 'none' }
   };
 
   // NOTA BENE: Materials have to be defined in the function where they're used if we want to use AlwaysDepth. Wtf, but whatever, no global materials here.
@@ -1363,7 +1364,8 @@ function updateRotations() {
   var nearestHotSpot = rotateTool.nearestHotSpot;
 
   console.log(hotSpots.yellowRing.position.x, rotateTool.dragStart);
-  if (nearestHotSpot.which == 'x-axis' || nearestHotSpot == 'none') { // temporary hack
+
+  if (nearestHotSpot.which == 'x-axis') {
     var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
     var axisVector = new THREE.Vector3(0,1,0);
   } else if (nearestHotSpot.which == 'y-axis') {
@@ -1390,12 +1392,43 @@ function updateRotations() {
 }
 
 function updateRotateTool(conditions) {
-  var spot;
+  var spot, sideSpot;
   var specs = rotateTool.specs;
   var hotSpots = rotateTool.hotSpots;
   var yellowRing = hotSpots.yellowRing;
-  rotateTool.nearestHotSpot = 'none';
+  rotateTool.nearestHotSpot = { which: 'none' };
   yellowRing.position.x = 10000;
+
+  spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+  if (conditions && conditions.lock) {
+    if (conditions.lock == 'x-axis') {
+      yellowRing.position.y = 0;
+      if (crosshair.position.x >= spot.x + specs.radius) {
+        yellowRing.position.x = specs.radius;
+      } else  if (crosshair.position.x <= spot.x - specs.radius) {
+        yellowRing.position.x = -1 * specs.radius;
+      } else {
+        yellowRing.position.x = crosshair.position.x - spot.x;
+        yellowRing.position.y = 0;
+      }
+      rotateTool.nearestHotSpot = { which: 'x-axis', location: yellowRing.position.x };
+      return(true);
+    } else if (conditions.lock == 'y-axis') {
+      yellowRing.position.x = 0;
+      if (crosshair.position.y >= spot.y + specs.radius) {
+        yellowRing.position.y = specs.radius;
+      } else if (crosshair.position.y <= spot.y - specs.radius) {
+        yellowRing.position.y = -1 * specs.radius;
+      } else {
+        yellowRing.position.x = 0;
+        yellowRing.position.y = crosshair.position.y - spot.y;
+      }
+      rotateTool.nearestHotSpot = { which: 'y-axis', location: yellowRing.position.y };
+      return(true);
+    }
+
+  }
+
   var distToSpot = Math.sqrt(dist2(crosshair.position,rotateTool.position));
   if (distToSpot < specs.smallRingRadius) {
     yellowRing.position.x = 0;
@@ -1408,8 +1441,8 @@ function updateRotateTool(conditions) {
   }
 
   for (var i in hotSpots.sides) {
-    spot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
-    distToSpot = Math.sqrt(dist2(crosshair.position, spot));
+    sideSpot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
+    distToSpot = Math.sqrt(dist2(crosshair.position, sideSpot));
     if (distToSpot < specs.smallRingRadius) {
       yellowRing.position.x = hotSpots.sides[i].x;
       yellowRing.position.y = hotSpots.sides[i].y;
@@ -1417,37 +1450,6 @@ function updateRotateTool(conditions) {
       selectableItem = { type: 'rotateTool' };
       return(true);
     }
-  }
-  spot = { x: rotateTool.position.x, y: rotateTool.position.y };
-  if (conditions && conditions.lock) {
-    if (conditions.lock == 'x-axis') {
-      yellowRing.position.y = 0;
-      if (crosshair.position.x >= spot.x + specs.radius) {
-        yellowRing.position.x = specs.radius;
-        return(true);
-      }
-      if (crosshair.position.x <= spot.x - specs.radius) {
-        yellowRing.position.x = -1 * specs.radius;
-        return(true);
-      }
-      yellowRing.position.x = crosshair.position.x - spot.x;
-      yellowRing.position.y = 0;
-      return(true);
-    } else if (conditions.lock == 'y-axis') {
-      yellowRing.position.x = 0;
-      if (crosshair.position.y >= spot.y + specs.radius) {
-        yellowRing.position.y = specs.radius;
-        return(true);
-      }
-      if (crosshair.position.y <= spot.y - specs.radius) {
-        yellowRing.position.y = -1 * specs.radius;
-        return(true);
-      }
-      yellowRing.position.x = 0;
-      yellowRing.position.y = crosshair.position.y - spot.y;
-      return(true);
-    }
-
   }
 
   if ((crosshair.position.x >= spot.x - specs.radius - specs.smallRingRadius) &&
@@ -1507,7 +1509,7 @@ function updateCrosshair() {
     crosshair.position.y = Math.max(-1, Math.min(1, (-2.0 * ((cursor.current.y + cursorAdjust.y) / (window.innerHeight / 1.75))) + 2.0));
 
     addToDebugText(['crosshair: ', crosshair.position.x, crosshair.position.y, '<br>']);
-    addToDebugText(['nearestHotSpot: ', rotateTool.nearestHotSpot, '<br>']);
+    addToDebugText(['nearestHotSpot: ', rotateTool.nearestHotSpot.which, '<br>']);
     
 
     if (checkForCoplanarDragging) {

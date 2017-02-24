@@ -792,19 +792,14 @@ function prepareForRotation() {
 }
 
 function placeIntoCsgObjects(csgObject) {
-  parent.remove(csgObject.mesh);
-
-  var cGeo = csgObject.toMesh();
   csgObject.saveVertexBackups();
   csgObject.bsp = new CSG.Node(csgObject.polygons);
-  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  csgObject.createMesh(parent, csgObjectMaterialFlat);  
+  csgObject.createSelectMesh(parent);
   csgObject.assignUuids();
   csgObject.createCoplanarGroups();
-  console.log('coplanar groups:', csgObject.coplanarGroups);
-  parent.add(csgObject.mesh);
 
   csgObjects.push(csgObject);
-  csgObject.setupSelectMesh(parent);
   firstRender = true;
 }
 
@@ -824,31 +819,20 @@ function setupCSG() {
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
   var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
-  //var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
-  //b.translate(0.25,0.5,0.25);
+
+  /* sphere causes section line issues, need to investigate */
+
+//  var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
+//  b.translate(0.25,0.5,0.25);
 
   var csgObject = a.subtract(b);
 
   placeIntoCsgObjects(csgObject);
   
+/* bug: if two objects present, then dragging faces on one screws up everything. also, two section lines means one of them has a marching ants issue */
 
-  /*
-  var d = CSG.cube( { radius: 0.25 });
-  var e = d.clone();
-  e.translate(.20,.5,0);
-  var csgObject = d;
-  console.log('csgObject:', csgObject);
-  
-  cGeo = csgObject.toMesh();
-  csgObject.bsp = new CSG.Node(csgObject.polygons);
-  csgObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
-  csgObject.mesh.geometry.computeFaceNormals();
-  parent.add(csgObject.mesh);
-
-  csgObjects.push(csgObject);
-  csgObject.setupSelectMesh(parent);
-  */
-
+//  var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
+//  placeIntoCsgObjects(c);
 
 }
 
@@ -1113,27 +1097,28 @@ function mergeExtensions() {
   for (var pickedItem of pickedItems) {
     fullyMergedObject = fullyMergedObject.union(pickedItem.csgObject);
   }
+/*
   _.each(csgObjects, function(obj) { 
     //console.log('Removing mesh for object:', obj);
     parent.remove(obj.mesh); 
     parent.remove(mergeParent.selectMesh);
   });
+*/
   var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
   csgObjects = _.difference(csgObjects, pickedObjects);
 
-  var cGeo = fullyMergedObject.toMesh();
   fullyMergedObject.bsp = new CSG.Node(fullyMergedObject.polygons);
-  fullyMergedObject.mesh = new THREE.Mesh( cGeo, csgObjectMaterialFlat);  
+  fullyMergedObject.createMesh(parent, csgObjectMaterialFlat);
+  fullyMergedObject.createSelectMesh(parent);
   fullyMergedObject.assignUuids();
   fullyMergedObject.createCoplanarGroups();
-  fullyMergedObject.setupSelectMesh(parent);
 
   for (var i in csgObjects) {
     var csgObject = csgObjects[i];
     if (csgObject == mergeParent) {
 
       parent.remove(csgObject.mesh)
-      parent.add(fullyMergedObject.mesh);
+      parent.remove(mergeParent.selectMesh);
 
       csgObjects[i] = fullyMergedObject;
       selectableItem = { type: 'none' };
@@ -1176,13 +1161,11 @@ function pickCoplanarGroup() {
     pickedItems.push(pickedItem);
 
     extrusion.bsp = new CSG.Node(extrusion.polygons);
-    var extrusionGeometry = extrusion.toMesh();
-    extrusion.mesh = new THREE.Mesh( extrusionGeometry, csgObjectMaterialFlat);  
-    extrusion.mesh.geometry.computeFaceNormals();
+    extrusion.createMesh(parent, csgObjectMaterialFlat);
+    extrusion.createSelectMesh(parent);
     extrusion.createCoplanarGroups();
-    parent.add(extrusion.mesh);
+
     csgObjects.push(extrusion);
-    extrusion.setupSelectMesh(parent);
     extrusion.saveVertexBackups();
     saveMeshVertices(extrusion);
   }
@@ -1363,8 +1346,6 @@ function updateRotations() {
   var hotSpots = rotateTool.hotSpots;
   var nearestHotSpot = rotateTool.nearestHotSpot;
 
-  console.log(hotSpots.yellowRing.position.x, rotateTool.dragStart);
-
   if (nearestHotSpot.which == 'x-axis') {
     var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
     var axisVector = new THREE.Vector3(0,1,0);
@@ -1375,18 +1356,14 @@ function updateRotations() {
   var angleRadians = angle * DEG_TO_RAD;
   var newMesh, csgObject;
   axisVector.normalize();
-  var cGeo;
   for (var pickedItem of pickedItems) {
     if (pickedItem.type == 'csg') {
       csgObject = pickedItem.item;
-      console.log('updating rotation of item:', csgObject);
+      //console.log('updating rotation of item:', csgObject);
       var origin = new CSG.Vector(rotateTool.position.x, rotateTool.position.y, plane.position.z);
       csgObject.rotateOnAxis(origin, axisVector, angleRadians);
-      cGeo = csgObject.toMesh();
-      parent.remove(csgObject.mesh);
-      csgObject.mesh = new THREE.Mesh(cGeo, csgObjectMaterialFlat);
-      parent.add(csgObject.mesh);      
-      csgObject.setupSelectMesh(parent);
+      csgObject.createMesh(parent, csgObjectMaterialFlat);
+      csgObject.createSelectMesh(parent, SELECT_STATUSES.PICKED);
     }
   }
 }
@@ -1562,7 +1539,7 @@ function updateCrosshair() {
             }
             break;
           case 'rotateTool':
-            console.log('dragging rotate tool');
+            //console.log('dragging rotate tool');
             switch (pickedItem.hotSpot) {
               case 'x-axis':
                 //console.log('dragging along x-axis');

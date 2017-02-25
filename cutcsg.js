@@ -831,8 +831,8 @@ function setupCSG() {
   
 /* bug: if two objects present, then dragging faces on one screws up everything. also, two section lines means one of them has a marching ants issue */
 
-//  var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
-//  placeIntoCsgObjects(c);
+  var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
+  placeIntoCsgObjects(c);
 
 }
 
@@ -883,10 +883,10 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         if (!shiftKeyDown) {
           unpickAllItems();
         }
-        dragging = true;
         checkForCoplanarDragging = true;
         coplanarDragStart = selectableItem.pickPosition.clone();
         coplanarDraggable = selectableItem;
+        dragging = true;
         break;
       case 'none':
       default:
@@ -1094,17 +1094,13 @@ function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) 
 function mergeExtensions() {
   var fullyMergedObject;
   fullyMergedObject = mergeParent.clone();
-  for (var pickedItem of pickedItems) {
-    fullyMergedObject = fullyMergedObject.union(pickedItem.csgObject);
-  }
-/*
-  _.each(csgObjects, function(obj) { 
-    //console.log('Removing mesh for object:', obj);
-    parent.remove(obj.mesh); 
-    parent.remove(mergeParent.selectMesh);
+  var pickedObjects = _.map(pickedItems, function(pickedItem) { 
+    var csgObject = pickedItem.csgObject;
+    fullyMergedObject = fullyMergedObject.union(csgObject);
+    parent.remove(csgObject.mesh);
+    parent.remove(csgObject.selectMesh);
+    return (csgObject);
   });
-*/
-  var pickedObjects = _.map(pickedItems, function(item) { return (item.csgObject) });
   csgObjects = _.difference(csgObjects, pickedObjects);
 
   fullyMergedObject.bsp = new CSG.Node(fullyMergedObject.polygons);
@@ -1241,6 +1237,7 @@ function updatePickSquare() {
           nearestMin = nearest.distance;
           highlightCenter.x = nearest.nearestPoint.x;
           highlightCenter.y = nearest.nearestPoint.y;
+          highlightCenter.csgObject = csgObject;
           highlightCenter.active = true;
           if (ci == 0) {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
@@ -1260,7 +1257,7 @@ function updatePickSquare() {
     pickSquare.visible = true;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
-      createCoplanarGroupHighlight(highlightCenter, pickSquare.mesh.position, csgObject);
+      createCoplanarGroupHighlight(highlightCenter, pickSquare.mesh.position, highlightCenter.csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }
@@ -1358,7 +1355,7 @@ function updateRotations() {
   axisVector.normalize();
   for (var pickedItem of pickedItems) {
     if (pickedItem.type == 'csg') {
-      csgObject = pickedItem.item;
+      var csgObject = pickedItem.item;
       //console.log('updating rotation of item:', csgObject);
       var origin = new CSG.Vector(rotateTool.position.x, rotateTool.position.y, plane.position.z);
       csgObject.rotateOnAxis(origin, axisVector, angleRadians);
@@ -1639,7 +1636,7 @@ function updateSelectableItem() {
   hidePickSquare();
   if (!updateRotateTool()) {
     if (!updatePickSquare()) {
-      for (csgObject of csgObjects) {
+      for (var csgObject of csgObjects) {
         var testPoint = new CSG.Vector(crosshair.position.x, crosshair.position.y, plane.position.z);
         selectMesh = csgObject.selectMesh;
         var selectability = false;

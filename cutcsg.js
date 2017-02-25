@@ -146,7 +146,7 @@ var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
 
 var polygonHighlightMaterial = new THREE.MeshStandardMaterial ( {
   shading: THREE.FlatShading,
-  color:0x00ff00,
+  color:0xffff00,
   side: THREE.DoubleSide,
   vertexColors: THREE.FaceColors // you need this if you want to change face colors later
 } );
@@ -829,13 +829,15 @@ function setupCSG() {
 
   placeIntoCsgObjects(csgObject);
   
-/* bug: if two objects present, then dragging faces on one screws up everything. also, two section lines means one of them has a marching ants issue */
+/* bug: two section lines means one of them has a marching ants issue */
 
+/*
   var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
   placeIntoCsgObjects(c);
 
   var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
   placeIntoCsgObjects(d);
+*/
 
 }
 
@@ -1242,6 +1244,7 @@ function updatePickSquare() {
     pickSquare.visible = true;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
+      highlightCenter.csgObject.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.SELECTABLE });
       createCoplanarGroupHighlight(highlightCenter, pickSquare.mesh.position, highlightCenter.csgObject);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }

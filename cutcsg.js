@@ -31,33 +31,36 @@
 //  [X] Make extrusion only fire when you start dragging the face. If you just pick it, it should do nothing
 //  [X] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
 //  [X] Fix section line bug where sometimes it will jump over the surface
-//  [ ] Picked items should indicate they're still picked, e.g. selectMesh should stay green
+//  [X] Picked items should indicate they're still picked, e.g. selectMesh should stay green
+//  [ ] Keep dragged polygons looking picked while being dragged
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
+//  [ ] Marching ants section line bug
 //  [X]  *) snap it to sectionline
 //  [X]  *) R jumps rotate tool to cursor
 //  [X]  *) show highlights on it when you hover 
-//  [ ]  *) We have to put each object in an Object3D of its own so we can use RotateOnAxis;
+//  [X]  *) We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 //  [ ]  *) rotate objects around section line
-//  [ ]  *) rotate picked objects around it 
-//  [ ]  *) lock cursor on it when you drag on it. 
+//  [X]  *) rotate picked objects around it 
+//  [X]  *) lock cursor on it when you drag on it. 
 //  [ ]  *) rotate tool around Z axies when you drag side circles
-//  [ ] Clean up all the messy code leftovers
+//  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
+//  [ ] restore the tool chests with colors (toggle colors on/off)
+//  [X] Clean up all the messy code leftovers
 //  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
 //  [ ] Make it possible to select polygons that are flush in the cutplane
-
+//  [ ] Load/save models to cloud
+//  [ ] Inspect how we could store objects in google drive or github repos
 //  [ ] If looking at room from behind, reverse the cursor controls
 //  [ ] Slice objects in half at cutplane
 //  [ ] Use mousewheel to zoom in and out
 //  [ ] Scale boxes to resize objects in any direction, when object is picked
 //  [ ] Reinstate shadow on the ground (use lights?)
 //  [ ] restore snapping of faces to other faces. maybe use physics libraries to let objects press up against each other and stop
-//  [ ] restore the tool chests with colors (toggle colors on/off)
 
 //  [ ] Can we do an algo where we pick the highest vertex and then walk edges picking the edge that has the greatest angle as the next edge each time? look at crossprod to get angle btwn vectors and 
 //      pay attention to the direction of the vector to make sure you're taking the inside angle every time. Alternatively, use raycasting approach.
-//  [ ] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
+//  [X] Support grabbing edges and dragging them and update the model . Robust point in poly: cf https://github.com/mikolalysenko/robust-point-in-polygon
 //  [ ] Separately compute faces that are in the plane and highlight them differently
-//  [ ] load/save models to cloud
 //  [ ] restore booleans manipulations within the UI cf http://learningthreejs.com/blog/2011/12/10/constructive-solid-geometry-with-csg-js/
 //  [ ] cmd-z to undo drags
 //  [X] Fix the coplanar faces issues on the CSG boolean results

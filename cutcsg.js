@@ -834,6 +834,9 @@ function setupCSG() {
   var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
   placeIntoCsgObjects(c);
 
+  var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
+  placeIntoCsgObjects(d);
+
 }
 
 
@@ -874,7 +877,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         break;
       case 'csg':
         if (!shiftKeyDown) {
-          pickedItems = [];
+          unpickAllItems();
         }
         pickSelectableCSG(selectableItem.item);
         dragging = true;
@@ -935,7 +938,7 @@ function faceInCutplane(face, vertices) {
 /* This section line routine works on THREE Mesh objects, but otherwise is the same as the JSModeler version (drawSectionLineJSM) above */
 function drawSectionLineCSG() {
   var P0, P1;
-  var sectionExists;
+  var sectionExists = false;
   var face;
   var sectionEdges;
   var sectionEdgesCount = 0;
@@ -968,13 +971,13 @@ function drawSectionLineCSG() {
   cutSections = new THREE.Object3D();
   parent.add(cutSections);
 
+  var objCtr = 0;
   var sectionSegments = new THREE.Geometry();
 
   for (var csgObject of csgObjects) {
     var polygons = csgObject.polygons;
     csgObject.sectionEdges = {};
     sectionEdges = csgObject.sectionEdges;
-    sectionExists = false;
     var polygons = csgObject.polygons;
     var polygon, polygonLength, vertices;
     for (var i = 0; i < polygons.length; ++i) {
@@ -1015,7 +1018,7 @@ function drawSectionLineCSG() {
         }
       }
     }
-
+    objCtr++;
   }
 
   if (sectionExists) {
@@ -1023,24 +1026,6 @@ function drawSectionLineCSG() {
     segmentGroup = new THREE.LineSegments(sectionSegments, sectionMaterialDashed);
     cutSections.add(segmentGroup);
   }
-
-/*
-  var geometry = new THREE.Geometry();
-  geometry.vertices.push(new THREE.Vector3(-0.5, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, 0.5, 0));
-  geometry.vertices.push(new THREE.Vector3(0.5, 0, 0));
-  geometry.computeLineDistances();
-  var line = new THREE.Line(geometry, sectionMaterialDashed);
-  parent.add(line);
-
-  var geometry = new THREE.Geometry();
-  geometry.vertices.push(new THREE.Vector3(1.1, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, -1.1, 0));
-  geometry.vertices.push(new THREE.Vector3(-1.1, 1.1, 0));
-  geometry.computeLineDistances();
-  var line = new THREE.Line(geometry, sectionMaterialDashed);
-  parent.add(line);
-*/
 }
 
 
@@ -1652,7 +1637,6 @@ function updateSelectableItem() {
             csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.SELECTABLE });
             //console.log('selectMeshstatus:', csgObject.selectMesh.status);
             selectability = true;
-            break;
           }
         }
         if (!selectability) {

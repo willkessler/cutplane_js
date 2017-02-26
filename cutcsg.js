@@ -44,6 +44,7 @@
 //  [X]  *) lock cursor on it when you drag on it. 
 //  [ ]  *) rotate tool around Z axies when you drag side circles
 //  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
+//  [ ] BUG: Rotate and then drag faces, and sometimes the coplanarity check fails
 //  [ ] restore the tool chests with colors (toggle colors on/off)
 //  [X] Clean up all the messy code leftovers
 //  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
@@ -834,13 +835,11 @@ function setupCSG() {
   
 /* bug: two section lines means one of them has a marching ants issue */
 
-/*
   var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
   placeIntoCsgObjects(c);
 
   var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
   placeIntoCsgObjects(d);
-*/
 
 }
 
@@ -881,10 +880,13 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         dragging = true;
         break;
       case 'csg':
-        if (!shiftKeyDown) {
-          unpickAllItems();
+        console.log('status:', selectableItem.item.selectMesh.status & SELECT_STATUSES.PICKED);
+        if (!(selectableItem.item.selectMesh.status & SELECT_STATUSES.PICKED)) {
+          if (!shiftKeyDown) {
+            unpickAllItems();
+          }
+          pickSelectableCSG(selectableItem.item);
         }
-        pickSelectableCSG(selectableItem.item);
         dragging = true;
         break;
       case 'coplanarGroup':

@@ -35,24 +35,25 @@
 //  [ ] Keep dragged polygons looking picked while being dragged
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
 //  [ ] Marching ants section line bug
+//  [ ]  *) rotate tool around Z axies when you drag side circles
+//  [ ]  *) rotate objects around section line
+//  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
 //  [X]  *) snap it to sectionline
 //  [X]  *) R jumps rotate tool to cursor
 //  [X]  *) show highlights on it when you hover 
 //  [X]  *) We have to put each object in an Object3D of its own so we can use RotateOnAxis;
-//  [ ]  *) rotate objects around section line
 //  [X]  *) rotate picked objects around it 
 //  [X]  *) lock cursor on it when you drag on it. 
-//  [ ]  *) rotate tool around Z axies when you drag side circles
-//  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
 //  [ ] BUG: Rotate and then drag faces, and sometimes the coplanarity check fails
-//  [ ] restore the tool chests with colors (toggle colors on/off)
+//  [ ] Restore the tool chests with colors (toggle colors on/off)
+//  [ ] Slice objects in half at cutplane
 //  [X] Clean up all the messy code leftovers
 //  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
+//  [ ] Extrusion inward to subtract
 //  [ ] Make it possible to select polygons that are flush in the cutplane
 //  [ ] Load/save models to cloud
 //  [ ] Inspect how we could store objects in google drive or github repos
 //  [ ] If looking at room from behind, reverse the cursor controls
-//  [ ] Slice objects in half at cutplane
 //  [ ] Use mousewheel to zoom in and out
 //  [ ] Scale boxes to resize objects in any direction, when object is picked
 //  [ ] Reinstate shadow on the ground (use lights?)
@@ -668,6 +669,7 @@ function setupPickSquare() {
 function setupRotateTool() {
   rotateTool = {
     position: {},
+    rotation: 0,
     specs: { 
       radius: 0.2,
       margin: 0,
@@ -780,6 +782,11 @@ function prepareForRotation() {
   selectableItem.hotSpot = nearestHotSpot.which;
   pickedItems.unshift(selectableItem); // put the rotatetool at the front of the picked items list
   switch (nearestHotSpot.which) {
+    case 'corner':
+      rotateTool.dragStart = nearestHotSpot.dragStart.clone();
+      rotateTool.dragStartVector = new THREE.Vector3(rotateTool.dragStart.x, rotateTool.dragStart.y,0);
+      rotateTool.dragStartVector.normalize();
+      break;
     case 'x-axis':
     case 'y-axis':
       rotateTool.dragStart = nearestHotSpot.location;
@@ -871,7 +878,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
     switch (selectableItem.type) {
       case 'rotateTool':
-        if (rotateTool.nearestHotSpot.which != 'corner') {
+        if (rotateTool.nearestHotSpot.which != 'ring') {
           if (rotateTool.nearestHotSpot.which == 'center') {
             unpickAllItems();
           }
@@ -1336,12 +1343,23 @@ function updateRotations() {
   var hotSpots = rotateTool.hotSpots;
   var nearestHotSpot = rotateTool.nearestHotSpot;
 
-  if (nearestHotSpot.which == 'x-axis') {
-    var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
-    var axisVector = new THREE.Vector3(0,1,0);
-  } else if (nearestHotSpot.which == 'y-axis') {
-    var angle = 360 * ((hotSpots.yellowRing.position.y - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
-    var axisVector = new THREE.Vector3(1,0,0);
+  if (nearestHotSpot.which == 'corner') {
+    // rotating about z axis
+    var crosshairToRotateToolVector = new THREE.Vector3(crosshair.position.x - rotateTool.position.x, crosshair.position.y - rotateTool.position.y,0);
+    crosshairToRotateToolVector.normalize();
+    var angle = rotateTool.dragStartVector.angleTo(crosshairToRotateToolVector) * RAD_TO_DEG;
+    var axisVector = new THREE.Vector3(0,0,1);    
+    var checkZ =rotateTool.dragStartVector.cross(crosshairToRotateToolVector);
+    //console.log('Angle:', angle.toFixed(2), rotateTool.dragStartVector.dot(crosshairToRotateToolVector), checkZ.z.toFixed(2));
+    console.log(checkZ);
+  } else {
+    if (nearestHotSpot.which == 'x-axis') {
+      var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
+      var axisVector = new THREE.Vector3(0,1,0);
+    } else if (nearestHotSpot.which == 'y-axis') {
+      var angle = 360 * ((hotSpots.yellowRing.position.y - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
+      var axisVector = new THREE.Vector3(1,0,0);
+    }
   }
   var angleRadians = angle * DEG_TO_RAD;
   var newMesh, csgObject;
@@ -1413,7 +1431,7 @@ function updateRotateTool(conditions) {
     if (distToSpot < specs.smallRingRadius) {
       yellowRing.position.x = hotSpots.sides[i].x;
       yellowRing.position.y = hotSpots.sides[i].y;
-      rotateTool.nearestHotSpot = { which: 'corner', index: i };
+      rotateTool.nearestHotSpot = { which: 'corner', index: i, dragStart: new THREE.Vector2(hotSpots.sides[i].x, hotSpots.sides[i].y) };
       selectableItem = { type: 'rotateTool' };
       return(true);
     }
@@ -1544,7 +1562,10 @@ function updateCrosshair() {
                 terminateEarly = true;
                 break;
               case 'corner':
-                // We will rotate on z eventually here
+                // Rotate around z axis
+                //updateRotateTool({ lock: 'y-axis' });
+                updateRotations();
+                terminateEarly = true;
                 break;
               case 'center':
               default:

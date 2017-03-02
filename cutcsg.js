@@ -736,6 +736,7 @@ function setupRotateTool() {
   geometry.computeLineDistances();
 
   smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
+  /*
   var smallRingLeft = smallRingCtr.clone();
   var smallRingRight = smallRingLeft.clone();
   var smallRingTop = smallRingLeft.clone();
@@ -752,6 +753,7 @@ function setupRotateTool() {
 
   smallRingBottom.position.y = -1 * specs.radius;
   rToolObj.add(smallRingBottom);
+  */
 
 
   geometry = new THREE.RingGeometry( (specs.smallRingRadius) - specs.thickness, (specs.smallRingRadius) ,  specs.segments );
@@ -782,9 +784,9 @@ function prepareForRotation() {
   selectableItem.hotSpot = nearestHotSpot.which;
   pickedItems.unshift(selectableItem); // put the rotatetool at the front of the picked items list
   switch (nearestHotSpot.which) {
-    case 'corner':
+    case 'ring':
       rotateTool.dragStart = nearestHotSpot.dragStart.clone();
-      rotateTool.dragStartVector = new THREE.Vector3(rotateTool.dragStart.x, rotateTool.dragStart.y,0);
+      rotateTool.dragStartVector = new THREE.Vector3(rotateTool.dragStart.x, rotateTool.dragStart.y, 0);
       rotateTool.dragStartVector.normalize();
       break;
     case 'x-axis':
@@ -878,12 +880,10 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
   if (mouseDown) {
     switch (selectableItem.type) {
       case 'rotateTool':
-        if (rotateTool.nearestHotSpot.which != 'ring') {
-          if (rotateTool.nearestHotSpot.which == 'center') {
-            unpickAllItems();
-          }
-          prepareForRotation();
+        if (rotateTool.nearestHotSpot.which == 'center') {
+          unpickAllItems();
         }
+        prepareForRotation();
         dragging = true;
         break;
       case 'csg':
@@ -1343,15 +1343,18 @@ function updateRotations() {
   var hotSpots = rotateTool.hotSpots;
   var nearestHotSpot = rotateTool.nearestHotSpot;
 
-  if (nearestHotSpot.which == 'corner') {
+  if (nearestHotSpot.which == 'ring') {
     // rotating about z axis
     var crosshairToRotateToolVector = new THREE.Vector3(crosshair.position.x - rotateTool.position.x, crosshair.position.y - rotateTool.position.y,0);
     crosshairToRotateToolVector.normalize();
     var angle = rotateTool.dragStartVector.angleTo(crosshairToRotateToolVector) * RAD_TO_DEG;
     var axisVector = new THREE.Vector3(0,0,1);    
-    var checkZ =rotateTool.dragStartVector.cross(crosshairToRotateToolVector);
+    var checkZ = rotateTool.dragStartVector.clone();
+    checkZ.cross(crosshairToRotateToolVector);
+    if (Math.sign(checkZ.z) < 0) {
+      angle = 360 - angle; // because angleTo only gives us 0-180, we have to figure out when we're greater than 180.
+    }
     //console.log('Angle:', angle.toFixed(2), rotateTool.dragStartVector.dot(crosshairToRotateToolVector), checkZ.z.toFixed(2));
-    console.log(checkZ);
   } else {
     if (nearestHotSpot.which == 'x-axis') {
       var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart) / (rotateTool.specs.radius * 2));
@@ -1363,7 +1366,6 @@ function updateRotations() {
   }
   var angleRadians = angle * DEG_TO_RAD;
   var newMesh, csgObject;
-  axisVector.normalize();
   for (var pickedItem of pickedItems) {
     if (pickedItem.type == 'csg') {
       var csgObject = pickedItem.item;
@@ -1410,6 +1412,13 @@ function updateRotateTool(conditions) {
       }
       rotateTool.nearestHotSpot = { which: 'y-axis', location: yellowRing.position.y };
       return(true);
+    } else if (conditions.lock == 'ring') {
+      var angleVector = new THREE.Vector2(crosshair.position.x - rotateTool.position.x, crosshair.position.y - rotateTool.position.y);
+      angleVector.normalize();
+      yellowRing.position.x = angleVector.x * specs.radius;
+      yellowRing.position.y = angleVector.y * specs.radius;
+      rotateTool.nearestHotSpot = { which: 'ring', location: { x: yellowRing.position.x, y: yellowRing.position.y } };
+      return(true);
     }
 
   }
@@ -1425,6 +1434,7 @@ function updateRotateTool(conditions) {
     return(true);
   }
 
+/*
   for (var i in hotSpots.sides) {
     sideSpot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
     distToSpot = Math.sqrt(dist2(crosshair.position, sideSpot));
@@ -1435,6 +1445,19 @@ function updateRotateTool(conditions) {
       selectableItem = { type: 'rotateTool' };
       return(true);
     }
+  }
+*/
+
+  spot = { x: rotateTool.position.x, y: rotateTool.position.y };
+  distToSpot = Math.sqrt(dist2(crosshair.position, spot));
+  if ((distToSpot > specs.radius - specs.smallRingRadius) &&
+      (distToSpot <= specs.radius + specs.smallRingRadius) ) {
+    // cf http://math.stackexchange.com/questions/127613/closest-point-on-circle-edge-from-point-outside-inside-the-circle
+    yellowRing.position.x = specs.radius * ((crosshair.position.x - spot.x) / distToSpot);
+    yellowRing.position.y = specs.radius * ((crosshair.position.y - spot.y) / distToSpot);
+    rotateTool.nearestHotSpot = { which: 'ring', dragStart: new THREE.Vector2(yellowRing.position.x, yellowRing.position.y) };
+    selectableItem = { type: 'rotateTool' };
+    return(true);
   }
 
   if ((crosshair.position.x >= spot.x - specs.radius - specs.smallRingRadius) &&
@@ -1458,17 +1481,6 @@ function updateRotateTool(conditions) {
     return(true);
   }
   
-  spot = { x: rotateTool.position.x, y: rotateTool.position.y };
-  distToSpot = Math.sqrt(dist2(crosshair.position, spot));
-  if ((distToSpot > specs.radius - specs.smallRingRadius) &&
-      (distToSpot <= specs.radius + specs.smallRingRadius) ) {
-    // cf http://math.stackexchange.com/questions/127613/closest-point-on-circle-edge-from-point-outside-inside-the-circle
-    yellowRing.position.x = specs.radius * ((crosshair.position.x - spot.x) / distToSpot);
-    yellowRing.position.y = specs.radius * ((crosshair.position.y - spot.y) / distToSpot);
-    rotateTool.nearestHotSpot = { which: 'ring' };
-    return(true);
-  }
-
   return(false);
 }
 
@@ -1561,9 +1573,9 @@ function updateCrosshair() {
                 updateRotations();
                 terminateEarly = true;
                 break;
-              case 'corner':
+              case 'ring':
                 // Rotate around z axis
-                //updateRotateTool({ lock: 'y-axis' });
+                updateRotateTool({ lock: 'ring' });
                 updateRotations();
                 terminateEarly = true;
                 break;

@@ -35,9 +35,12 @@
 //  [ ] Keep dragged polygons looking picked while being dragged
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
 //  [ ] Marching ants section line bug
-//  [ ]  *) rotate tool around Z axies when you drag side circles
+//  [X]  *) rotate tool around Z axies when you drag side circles
+//  [ ]  *) make x and y axes work correctly when z rotate applied
+//  [ ]  *) hold down shift key while rotating, and we snap to whatever faces can be made parallel or 90 degrees to the cutplane, e.g. cuboid will rotate by 90 deg increments
 //  [ ]  *) rotate objects around section line
 //  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
+//  [ ]  *) if inside object and you hit R, snap to center point between max and min points of all section lines that intersect xaxis aligned with crosshair
 //  [X]  *) snap it to sectionline
 //  [X]  *) R jumps rotate tool to cursor
 //  [X]  *) show highlights on it when you hover 

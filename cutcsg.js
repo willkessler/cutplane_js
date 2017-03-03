@@ -1356,8 +1356,14 @@ function updateRotations() {
     if (Math.sign(checkZ.z) < 0) {
       angle = 360 - angle; // because angleTo only gives us 0-180, we have to figure out when we're greater than 180.
     }
-    rotateTool.zRotation = angle;
-    rotateTool.makeAxes(angle);
+    var checkZ2 = new THREE.Vector3(0,1,0);
+    var axesAngle = checkZ2.angleTo(crosshairToRotateToolVector) * RAD_TO_DEG;
+    checkZ2.cross(crosshairToRotateToolVector);
+    if (Math.sign(checkZ2.z) < 0) {
+      axesAngle = 360 - axesAngle;
+    }
+    rotateTool.makeAxes(axesAngle);
+    rotateTool.zRotation = axesAngle;
     //console.log('Angle:', angle.toFixed(2), rotateTool.dragStartVector.dot(crosshairToRotateToolVector), checkZ.z.toFixed(2));
   } else {
     if (nearestHotSpot.which == 'x-axis') {

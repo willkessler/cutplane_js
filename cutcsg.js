@@ -669,7 +669,7 @@ function setupPickSquare() {
 function setupRotateTool() {
   rotateTool = {
     position: {},
-    rotation: 0,
+    zRotation: 0,
     specs: { 
       radius: 0.2,
       margin: 0,
@@ -713,16 +713,25 @@ function setupRotateTool() {
   var ring = new THREE.Line( geometry, rotateToolMaterial );
   rToolObj.add( ring );
 
-  var cross = new THREE.Geometry();
-  cross.vertices.push(
-    new THREE.Vector3(-1 * specs.radius, 0, 0),
-    new THREE.Vector3( 1 * specs.radius, 0, 0),
-    new THREE.Vector3(0, -1 * specs.radius, 0),
-    new THREE.Vector3(0,  1 * specs.radius, 0)
-  );
-  cross.computeLineDistances();
-  var lines = new THREE.LineSegments(cross, rotateToolMaterial );
-  rToolObj.add(lines);
+  rotateTool.makeAxes = function(angle) {
+    rotateTool.object3D.remove(rotateTool.axes);
+    var cross = new THREE.Geometry();
+    var angleRad = angle * DEG_TO_RAD;
+    var oppositeAngleRad = (angle - 180) * DEG_TO_RAD;
+    var angle90Rad = (angle + 90) * DEG_TO_RAD;
+    var oppositeAngle90Rad = (angle - 90) * DEG_TO_RAD;
+    cross.vertices.push(
+      new THREE.Vector3(specs.radius * Math.cos(oppositeAngleRad),   specs.radius * Math.sin(oppositeAngleRad), 0),
+      new THREE.Vector3(specs.radius * Math.cos(angleRad),           specs.radius * Math.sin(angleRad), 0),
+      new THREE.Vector3(specs.radius * Math.cos(oppositeAngle90Rad), specs.radius * Math.sin(oppositeAngle90Rad), 0),
+      new THREE.Vector3(specs.radius * Math.cos(angle90Rad),         specs.radius * Math.sin(angle90Rad), 0)
+    );
+    cross.computeLineDistances();
+    rotateTool.axes = new THREE.LineSegments(cross, rotateToolMaterial );
+    rotateTool.object3D.add(rotateTool.axes);
+  }
+
+  rotateTool.makeAxes(0.0);
 
   geometry = new THREE.CircleGeometry( specs.centerRingRadius , specs.segments );
   geometry.vertices.shift();
@@ -735,8 +744,8 @@ function setupRotateTool() {
   geometry.vertices.shift();
   geometry.computeLineDistances();
 
-  smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
   /*
+  smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
   var smallRingLeft = smallRingCtr.clone();
   var smallRingRight = smallRingLeft.clone();
   var smallRingTop = smallRingLeft.clone();
@@ -816,14 +825,6 @@ function placeIntoCsgObjects(csgObject) {
   firstRender = true;
 }
 
-
-function rotateIt(angle) {
-  var yAxis = new THREE.Vector3(0,1,0);
-  var csgObject = csgObjects.shift();
-  csgObject.rotateOnAxis(yAxis, angle * DEG_TO_RAD);
-
-  placeIntoCsgObjects(csgObject);
-}
 
 
 function setupCSG() {
@@ -1330,6 +1331,7 @@ function toggleRotateTool() {
   var distToSpot = dist2(rotateTool.position, crosshair.position);
   if (distToSpot < rotateTool.specs.smallRingRadius) {
     positionRotateTool(rotateTool.specs.startingPos);
+    rotateTool.makeAxes(0);
   } else {
     positionRotateTool(crosshair.position);
   }
@@ -1354,6 +1356,8 @@ function updateRotations() {
     if (Math.sign(checkZ.z) < 0) {
       angle = 360 - angle; // because angleTo only gives us 0-180, we have to figure out when we're greater than 180.
     }
+    rotateTool.zRotation = angle;
+    rotateTool.makeAxes(angle);
     //console.log('Angle:', angle.toFixed(2), rotateTool.dragStartVector.dot(crosshairToRotateToolVector), checkZ.z.toFixed(2));
   } else {
     if (nearestHotSpot.which == 'x-axis') {
@@ -1507,7 +1511,7 @@ function updateCrosshair() {
 
     addToDebugText(['crosshair: ', crosshair.position.x, crosshair.position.y, '<br>']);
     addToDebugText(['nearestHotSpot: ', rotateTool.nearestHotSpot.which, '<br>']);
-    
+    addToDebugText(['rtool_zroot: ', rotateTool.zRotation, '<br>']);
 
     if (checkForCoplanarDragging) {
       if (dist2(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {

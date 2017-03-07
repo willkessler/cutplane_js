@@ -729,6 +729,15 @@ function setupRotateTool() {
       new THREE.Vector3(specs.radius * Math.cos(oppositeAngle90Rad), specs.radius * Math.sin(oppositeAngle90Rad), 0),
       new THREE.Vector3(specs.radius * Math.cos(angle90Rad),         specs.radius * Math.sin(angle90Rad), 0)
     ];
+    rotateTool.axesVecs = [ new THREE.Vector3(rotateTool.axesCoords[1].x - rotateTool.axesCoords[0].x,
+                                              rotateTool.axesCoords[1].y - rotateTool.axesCoords[0].y,
+                                              rotateTool.axesCoords[1].z - rotateTool.axesCoords[0].z),
+                            new THREE.Vector3(rotateTool.axesCoords[3].x - rotateTool.axesCoords[2].x,
+                                              rotateTool.axesCoords[3].y - rotateTool.axesCoords[2].y,
+                                              rotateTool.axesCoords[3].z - rotateTool.axesCoords[2].z) ];
+    rotateTool.axesVecs[0].normalize();
+    rotateTool.axesVecs[1].normalize();
+
     cross.vertices.push(rotateTool.axesCoords[0],rotateTool.axesCoords[1],rotateTool.axesCoords[2],rotateTool.axesCoords[3]);
     cross.computeLineDistances();
     rotateTool.axes = new THREE.LineSegments(cross, rotateToolMaterial );
@@ -790,23 +799,17 @@ function setupRotateTool() {
 
 }
 
-// Save backup of meshes so we can reapply rotation while dragging on rotate tool. We reapply to avoid build up of rotation errors.
 function prepareForRotation() {
   var csgObject;
   var nearestHotSpot = rotateTool.nearestHotSpot;
   selectableItem.hotSpot = nearestHotSpot.which;
   pickedItems.unshift(selectableItem); // put the rotatetool at the front of the picked items list
-  switch (nearestHotSpot.which) {
-    case 'ring':
-    case 'x-axis':
-    case 'y-axis':
-      rotateTool.dragStart = nearestHotSpot.dragStart.clone();
-      rotateTool.dragStartVector = new THREE.Vector3(rotateTool.dragStart.x, rotateTool.dragStart.y, 0);
-      rotateTool.dragStartVector.normalize();
-      break;
-    default:
-      break;
-  }
+
+  rotateTool.dragStart = nearestHotSpot.dragStart.clone();
+  rotateTool.dragStartVector = new THREE.Vector3(rotateTool.dragStart.x, rotateTool.dragStart.y, 0);
+  rotateTool.dragStartVector.normalize();
+
+  // Save backup of meshes so we can reapply rotation while dragging on rotate tool. We reapply to avoid build up of rotation errors.
   for (var pickedItem of pickedItems) {
     if (pickedItem.type == 'csg') {
       csgObject = pickedItem.item;
@@ -1347,6 +1350,7 @@ function toggleRotateTool() {
 function updateRotations() {
   var hotSpots = rotateTool.hotSpots;
   var nearestHotSpot = rotateTool.nearestHotSpot;
+  console.log('nearestHotSpot:', nearestHotSpot);
 
   if (nearestHotSpot.which == 'ring') {
     // rotating about z axis
@@ -1368,14 +1372,10 @@ function updateRotations() {
     rotateTool.zRotation = axesAngle;
     rotateTool.makeAxes(axesAngle);
     //console.log('Angle:', angle.toFixed(2), rotateTool.dragStartVector.dot(crosshairToRotateToolVector), checkZ.z.toFixed(2));
-  } else {
-    if (nearestHotSpot.which == 'x-axis') {
-      var angle = 360 * ((hotSpots.yellowRing.position.x - rotateTool.dragStart.x) / (rotateTool.specs.radius * 2));
-      var axisVector = new THREE.Vector3(0,1,0);
-    } else if (nearestHotSpot.which == 'y-axis') {
-      var angle = 360 * ((hotSpots.yellowRing.position.y - rotateTool.dragStart.y) / (rotateTool.specs.radius * 2));
-      var axisVector = new THREE.Vector3(1,0,0);
-    }
+  } else if (nearestHotSpot.which == 'axis') {
+    var angle = 360 * ((Math.sqrt(dist2(hotSpots.yellowRing.position, rotateTool.dragStart))) / (rotateTool.specs.radius * 2));
+    var axisVector = rotateTool.axesVecs[nearestHotSpot.axisId].clone();
+    axisVector.applyAxisAngle(new THREE.Vector3(0,0,-1), 90 * DEG_TO_RAD);
   }
   var angleRadians = angle * DEG_TO_RAD;
   var newMesh, csgObject;
@@ -1396,45 +1396,35 @@ function updateRotateTool(conditions) {
   var specs = rotateTool.specs;
   var hotSpots = rotateTool.hotSpots;
   var yellowRing = hotSpots.yellowRing;
-  rotateTool.nearestHotSpot = { which: 'none' };
   yellowRing.position.x = 10000;
 
   spot = { x: rotateTool.position.x, y: rotateTool.position.y };
-  if (conditions && conditions.lock) {
-    if (conditions.lock == 'x-axis') {
-      yellowRing.position.y = 0;
-      if (crosshair.position.x >= spot.x + specs.radius) {
-        yellowRing.position.x = specs.radius;
-      } else  if (crosshair.position.x <= spot.x - specs.radius) {
-        yellowRing.position.x = -1 * specs.radius;
-      } else {
-        yellowRing.position.x = crosshair.position.x - spot.x;
-        yellowRing.position.y = 0;
-      }
-      rotateTool.nearestHotSpot = { which: 'x-axis', location: yellowRing.position.x };
-      return(true);
-    } else if (conditions.lock == 'y-axis') {
-      yellowRing.position.x = 0;
-      if (crosshair.position.y >= spot.y + specs.radius) {
-        yellowRing.position.y = specs.radius;
-      } else if (crosshair.position.y <= spot.y - specs.radius) {
-        yellowRing.position.y = -1 * specs.radius;
-      } else {
-        yellowRing.position.x = 0;
-        yellowRing.position.y = crosshair.position.y - spot.y;
-      }
-      rotateTool.nearestHotSpot = { which: 'y-axis', location: yellowRing.position.y };
-      return(true);
-    } else if (conditions.lock == 'ring') {
+
+  // Check for situation where we are locked on either an axis or the ring.
+  if (conditions && conditions.lock && conditions.lock.which) {
+    if (conditions.lock.which == 'axis') {
+      var axisId = conditions.lock.axisId;
+
+      var rToolVec3 = new THREE.Vector3(rotateTool.position.x, rotateTool.position.y,0);
+      var axis = [ new THREE.Vector3(rotateTool.axesCoords[axisId * 2].x, rotateTool.axesCoords[axisId*2].y, 0 ),
+                   new THREE.Vector3(rotateTool.axesCoords[(axisId * 2) + 1].x, rotateTool.axesCoords[(axisId * 2) + 1].y, 0) ];
+      axis[0].add(rToolVec3); 
+      axis[1].add(rToolVec3);
+      var ds = distToSegmentSquared3d(crosshair.position, axis[0], axis[1]);
+      yellowRing.position.x = ds.nearestPoint.x - rotateTool.position.x;
+      yellowRing.position.y = ds.nearestPoint.y - rotateTool.position.y;
+      rotateTool.nearestHotSpot = { which: 'axis', axisId: axisId, location: new THREE.Vector2(yellowRing.position.x, yellowRing.position.y) };
+    } else if (conditions.lock.which == 'ring') {
       var angleVector = new THREE.Vector2(crosshair.position.x - rotateTool.position.x, crosshair.position.y - rotateTool.position.y);
       angleVector.normalize();
       yellowRing.position.x = angleVector.x * specs.radius;
       yellowRing.position.y = angleVector.y * specs.radius;
       rotateTool.nearestHotSpot = { which: 'ring', location: { x: yellowRing.position.x, y: yellowRing.position.y } };
-      return(true);
     }
-
+    return(true);
   }
+
+  rotateTool.nearestHotSpot = { which: 'none' };
 
   var distToSpot = Math.sqrt(dist2(crosshair.position,rotateTool.position));
   if (distToSpot < specs.smallRingRadius) {
@@ -1473,34 +1463,24 @@ function updateRotateTool(conditions) {
     return(true);
   }
 
+  // Check for position nearest to axes 
   var rToolVec3 = new THREE.Vector3(rotateTool.position.x, rotateTool.position.y,0);
-  var axis1 = [ new THREE.Vector3(rotateTool.axesCoords[0].x, rotateTool.axesCoords[0].y, 0 ),
-                new THREE.Vector3(rotateTool.axesCoords[1].x, rotateTool.axesCoords[1].y, 0) ];
-  axis1[0].add(rToolVec3); 
-  axis1[1].add(rToolVec3);
-  addToDebugText(['axis:',axis1[0].x, axis1[0].y]);
-  var ds = distToSegmentSquared3d(crosshair.position, axis1[0], axis1[1]);
-  var tolerance = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
-  if (ds.distance < tolerance) {
-    yellowRing.position.x = ds.nearestPoint.x - rotateTool.position.x;
-    yellowRing.position.y = ds.nearestPoint.y - rotateTool.position.y;
-    rotateTool.nearestHotSpot = { which: 'x-axis', dragStart: new THREE.Vector2(yellowRing.position.x, yellowRing.position.y) };
-    selectableItem = { type: 'rotateTool' };
-    return(true);
+  for (var i = 0; i < 3; i += 2) {
+    var axis = [ new THREE.Vector3(rotateTool.axesCoords[i].x, rotateTool.axesCoords[i].y, 0 ),
+                 new THREE.Vector3(rotateTool.axesCoords[i+1].x, rotateTool.axesCoords[i+1].y, 0) ];
+    axis[0].add(rToolVec3); 
+    axis[1].add(rToolVec3);
+    addToDebugText(['axis:',axis[0].x, axis[0].y]);
+    var ds = distToSegmentSquared3d(crosshair.position, axis[0], axis[1]);
+    var tolerance = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
+    if (ds.distance < tolerance) {
+      yellowRing.position.x = ds.nearestPoint.x - rotateTool.position.x;
+      yellowRing.position.y = ds.nearestPoint.y - rotateTool.position.y;
+      rotateTool.nearestHotSpot = { which: 'axis', axisId: i / 2, dragStart: new THREE.Vector2(yellowRing.position.x, yellowRing.position.y) };
+      selectableItem = { type: 'rotateTool', which: 'axis', axisId: i / 2 };
+      return(true);
+    }
   }
-  var axis2 = [ new THREE.Vector3(rotateTool.axesCoords[2].x, rotateTool.axesCoords[2].y, 0 ),
-                new THREE.Vector3(rotateTool.axesCoords[3].x, rotateTool.axesCoords[3].y, 0) ];
-  axis2[0].add(rToolVec3); 
-  axis2[1].add(rToolVec3);
-  ds = distToSegmentSquared3d(crosshair.position, axis2[0], axis2[1]);
-  if (ds.distance < tolerance) {
-    yellowRing.position.x = ds.nearestPoint.x - rotateTool.position.x;
-    yellowRing.position.y = ds.nearestPoint.y - rotateTool.position.y;
-    rotateTool.nearestHotSpot = { which: 'y-axis', dragStart: new THREE.Vector2( yellowRing.position.x, yellowRing.position.y) };
-    selectableItem = { type: 'rotateTool' };
-    return(true);
-  }
-
   
   return(false);
 }
@@ -1582,21 +1562,15 @@ function updateCrosshair() {
           case 'rotateTool':
             //console.log('dragging rotate tool');
             switch (pickedItem.hotSpot) {
-              case 'x-axis':
-                //console.log('dragging along x-axis');
-                updateRotateTool({ lock: 'x-axis' });
-                updateRotations();
-                terminateEarly = true;
-                break;
-              case 'y-axis':
-                //console.log('dragging along y-axis');
-                updateRotateTool({ lock: 'y-axis' });
+              case 'axis':
+                console.log('dragging along axis');
+                updateRotateTool({ lock: { which: 'axis', axisId: pickedItem.axisId } });
                 updateRotations();
                 terminateEarly = true;
                 break;
               case 'ring':
                 // Rotate around z axis
-                updateRotateTool({ lock: 'ring' });
+                updateRotateTool({ lock: { which: 'ring' }});
                 updateRotations();
                 terminateEarly = true;
                 break;

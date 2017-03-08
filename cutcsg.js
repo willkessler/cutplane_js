@@ -1212,7 +1212,7 @@ function hidePickSquare() {
 
 function updatePickSquare() {
   var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10, active: false };
-  var siblings, coordsArray, coord1, coord2, coordsRaw;
+  var siblings, coordsArray, coord1, coord2, coordsRaw, finalSectionCoords;
 
   if (!csgObjects) {
     return(false);
@@ -1244,6 +1244,7 @@ function updatePickSquare() {
           highlightCenter.y = nearest.nearestPoint.y;
           highlightCenter.csgObject = csgObject;
           highlightCenter.active = true;
+          finalSectionCoords = [ coordsArray[ci], coordsArray[ci+1] ];
           if (ci == 0) {
             highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
           } else {
@@ -1260,6 +1261,7 @@ function updatePickSquare() {
     pickSquare.mesh.position.y = highlightCenter.y;
     pickSquare.mesh.position.z = plane.position.z + 0.01;
     pickSquare.visible = true;
+    pickSquare.sectionCoords = finalSectionCoords;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
       highlightCenter.csgObject.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.SELECTABLE });
@@ -1319,14 +1321,23 @@ function updateRoomView() {
 function positionRotateTool(position) {
   var rToolObj = rotateTool.object3D;
   var finalPosition = position;
+  var zRotation = 0;
 
   if (pickSquare.visible) {
     finalPosition = pickSquare.mesh.position;
+    var sectionVector = new THREE.Vector3(pickSquare.sectionCoords[1].x - pickSquare.sectionCoords[0].x,
+                                          pickSquare.sectionCoords[1].y - pickSquare.sectionCoords[0].y,
+                                          pickSquare.sectionCoords[1].z - pickSquare.sectionCoords[0].z);
+    sectionVector.normalize();
+    var yVec = new THREE.Vector3(0,1,0);
+    zRotation = yVec.angleTo(sectionVector) * RAD_TO_DEG;
   } else {
     finalPosition = position;
   }
   rotateTool.position.x = position.x;
   rotateTool.position.y = position.y;
+  rotateTool.zRotation = zRotation;
+  rotateTool.makeAxes();
   rToolObj.position.x = finalPosition.x;
   rToolObj.position.y = finalPosition.y;
 
@@ -1336,6 +1347,7 @@ function toggleRotateTool() {
   var distToSpot = dist2(rotateTool.position, crosshair.position);
   if (distToSpot < rotateTool.specs.smallRingRadius) {
     positionRotateTool(rotateTool.specs.startingPos);
+    // Calculate z rotation such that an axis lines up with the section line.
     rotateTool.zRotation = 0;
     rotateTool.makeAxes();
   } else {
@@ -1350,7 +1362,7 @@ function toggleRotateTool() {
 function updateRotations() {
   var hotSpots = rotateTool.hotSpots;
   var nearestHotSpot = rotateTool.nearestHotSpot;
-  console.log('nearestHotSpot:', nearestHotSpot);
+  //console.log('nearestHotSpot:', nearestHotSpot);
 
   if (nearestHotSpot.which == 'ring') {
     // rotating about z axis
@@ -1373,8 +1385,13 @@ function updateRotations() {
     rotateTool.makeAxes(axesAngle);
     //console.log('Angle:', angle.toFixed(2), rotateTool.dragStartVector.dot(crosshairToRotateToolVector), checkZ.z.toFixed(2));
   } else if (nearestHotSpot.which == 'axis') {
-    var angle = 360 * ((Math.sqrt(dist2(hotSpots.yellowRing.position, rotateTool.dragStart))) / (rotateTool.specs.radius * 2));
+    var dragVector = new THREE.Vector3(hotSpots.yellowRing.position.x - rotateTool.dragStart.x,
+                                       hotSpots.yellowRing.position.y - rotateTool.dragStart.y,
+                                       hotSpots.yellowRing.position.z - rotateTool.dragStart.z);
+    dragVector.normalize();
     var axisVector = rotateTool.axesVecs[nearestHotSpot.axisId].clone();
+    var reversed = -1 * axisVector.dot(dragVector);
+    var angle = reversed * 360 * ((Math.sqrt(dist2(hotSpots.yellowRing.position, rotateTool.dragStart))) / (rotateTool.specs.radius * 2));
     axisVector.applyAxisAngle(new THREE.Vector3(0,0,-1), 90 * DEG_TO_RAD);
   }
   var angleRadians = angle * DEG_TO_RAD;

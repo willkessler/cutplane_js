@@ -36,9 +36,10 @@
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
 //  [ ] Marching ants section line bug
 //  [X]  *) rotate tool around Z axes when you drag side circles
-//  [ ]  *) make x and y axes work correctly when z rotate applied
+//  [X]  *) make x and y axes work correctly when z rotate applied
 //  [ ]  *) hold down shift key while rotating, and we snap to whatever faces can be made parallel or 90 degrees to the cutplane, e.g. cuboid will rotate by 90 deg increments
-//  [ ]  *) rotate objects around section line
+//  [X]  *) rotate objects around section line
+//  [ ]  *) pick object when you snap rotate tool to its section line so you can immediately rotate it
 //  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
 //  [ ]  *) if inside object and you hit R, snap to center point between max and min points of all section lines that intersect xaxis aligned with crosshair
 //  [X]  *) snap it to sectionline
@@ -225,6 +226,10 @@ function handleKeyDown(event) {
     case 17:
       break; // control key
     case 65: // "A" key, not used
+      break;
+    case 70: // "f" key flush or flip command
+      console.log('Flush key pressed');
+      flushSelectableObject();
       break;
     case 82: // R key
       toggleRotateTool();
@@ -758,24 +763,24 @@ function setupRotateTool() {
   geometry.computeLineDistances();
 
   /*
-  smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
-  var smallRingLeft = smallRingCtr.clone();
-  var smallRingRight = smallRingLeft.clone();
-  var smallRingTop = smallRingLeft.clone();
-  var smallRingBottom = smallRingLeft.clone();
+     smallRingCtr = new THREE.Line( geometry, rotateToolMaterial );
+     var smallRingLeft = smallRingCtr.clone();
+     var smallRingRight = smallRingLeft.clone();
+     var smallRingTop = smallRingLeft.clone();
+     var smallRingBottom = smallRingLeft.clone();
 
-  smallRingLeft.position.x = -1 * specs.radius;
-  rToolObj.add(smallRingLeft);
+     smallRingLeft.position.x = -1 * specs.radius;
+     rToolObj.add(smallRingLeft);
 
-  smallRingRight.position.x = specs.radius;
-  rToolObj.add(smallRingRight);
+     smallRingRight.position.x = specs.radius;
+     rToolObj.add(smallRingRight);
 
-  smallRingTop.position.y =  1 * specs.radius;
-  rToolObj.add(smallRingTop);
+     smallRingTop.position.y =  1 * specs.radius;
+     rToolObj.add(smallRingTop);
 
-  smallRingBottom.position.y = -1 * specs.radius;
-  rToolObj.add(smallRingBottom);
-  */
+     smallRingBottom.position.y = -1 * specs.radius;
+     rToolObj.add(smallRingBottom);
+   */
 
 
   geometry = new THREE.RingGeometry( (specs.smallRingRadius) - specs.thickness, (specs.smallRingRadius) ,  specs.segments );
@@ -841,20 +846,22 @@ function setupCSG() {
 
   /* sphere causes section line issues, need to investigate */
 
-//  var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
-//  b.translate(0.25,0.5,0.25);
+  //  var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
+  //  b.translate(0.25,0.5,0.25);
 
   var csgObject = a.subtract(b);
 
   placeIntoCsgObjects(csgObject);
   
-/* bug: two section lines means one of them has a marching ants issue */
+  /* bug: two section lines means one of them has a marching ants issue */
 
-  var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
-  placeIntoCsgObjects(c);
+  /*
+     var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
+     placeIntoCsgObjects(c);
 
-  var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
-  placeIntoCsgObjects(d);
+     var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
+     placeIntoCsgObjects(d);
+   */
 
 }
 
@@ -864,12 +871,38 @@ function setupCSG() {
 // Main interaction functions
 // --------------------------------------------------------------------------------
 
-function pickSelectableCSG() {
-  var csgObject = selectableItem.item;
-  csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.PICKED });
-  pickedItems.push(selectableItem);
+function pickSelectable() {
+  if (selectableItem.type == 'csg') {
+    var coplanarGroup = selectableItem.item;
+    coplanarGroup.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.PICKED });
+    pickedItems.push(selectableItem);
+  } else if (selectableItem.type == 'coplanarGroup') {
+    var csgObject = selectableItem.csgObject;
+    var normal = selectableItem.item[0].plane.normal;
+    var sectionVector = new THREE.Vector3(pickSquare.sectionCoords[1].x - pickSquare.sectionCoords[0].x,
+                                          pickSquare.sectionCoords[1].y - pickSquare.sectionCoords[0].y,
+                                          pickSquare.sectionCoords[1].z - pickSquare.sectionCoords[0].z);
+    sectionVector.normalize();
+    var zVec = new THREE.Vector3(0,0,1);
+
+    csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.PICKED });
+    selectableItem = { 
+      type:'csg', 
+      item: csgObject
+    };
+    pickedItems.push(selectableItem);
+  }
 }
 
+function pickSelectableFromSectionLine() {
+}
+
+function flushSelectableObject() {
+  if (selectableItem.type == 'coplanarGroup') {
+    console.log('flipping :', selectableItem);
+    pickSelectable();
+  }
+}
 
 // Shiftkey: http://stackoverflow.com/questions/3781142/jquery-or-javascript-how-determine-if-shift-key-being-pressed-while-clicking-an
 
@@ -880,6 +913,10 @@ function unpickAllItems() {
     }
   }
   pickedItems = [];
+}
+
+function unpickRotateTool() {
+  pickedItems.shift(); // remove rotateTool, which is always at the front of the pickedItems list when it gets picked.
 }
 
 function updatePickedItems(mouseDown, shiftKeyDown) {
@@ -898,7 +935,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
           if (!shiftKeyDown) {
             unpickAllItems();
           }
-          pickSelectableCSG(selectableItem.item);
+          pickSelectable();
         }
         dragging = true;
         break;
@@ -927,6 +964,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
       case 'polygon':
         break;
       case 'rotateTool':
+        unpickRotateTool();
         break;
     }
     checkForCoplanarDragging = false;
@@ -1330,7 +1368,14 @@ function positionRotateTool(position) {
                                           pickSquare.sectionCoords[1].z - pickSquare.sectionCoords[0].z);
     sectionVector.normalize();
     var yVec = new THREE.Vector3(0,1,0);
-    zRotation = yVec.angleTo(sectionVector) * RAD_TO_DEG;
+    zRotation = -1 * yVec.angleTo(sectionVector) * RAD_TO_DEG;
+    var checkZ = yVec.clone();
+    checkZ.cross(sectionVector);
+    if (Math.sign(checkZ.z) > 0) {
+      console.log('Reversing angle');
+      zRotation = 360 - zRotation;
+    }
+    console.log(pickSquare.sectionCoords, sectionVector, zRotation);
   } else {
     finalPosition = position;
   }

@@ -410,6 +410,12 @@ function project3DVectorIntoScreenSpace(x, y, z, camera, width, height) {
   return vector;
 }
 
+function midPoint(coords) {
+  return (new CSG.Vector(((coords[1].x - coords[0].x) / 2) + coords[0].x,
+                         ((coords[1].y - coords[0].y) / 2) + coords[0].y,
+                         ((coords[1].z - coords[0].z) / 2) + coords[0].z) );
+}
+
 // https://www.gamedev.net/topic/556821-check-if-vectors-are-parallel-and-pointing-in-the-same-direction-with-tolerance/, second response useful
 function projectOntoVector(v1, v2) {
   var dotProd = v1.dot(v2);
@@ -842,7 +848,8 @@ function setupCSG() {
 
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
-  var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
+  //var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
+  var b = CSG.cube ({ radius:[0.3,1,0.3], center:[0.25, 0.65, 0] });
 
   /* sphere causes section line issues, need to investigate */
 
@@ -878,13 +885,6 @@ function pickSelectable() {
     pickedItems.push(selectableItem);
   } else if (selectableItem.type == 'coplanarGroup') {
     var csgObject = selectableItem.csgObject;
-    var normal = selectableItem.item[0].plane.normal;
-    var sectionVector = new THREE.Vector3(pickSquare.sectionCoords[1].x - pickSquare.sectionCoords[0].x,
-                                          pickSquare.sectionCoords[1].y - pickSquare.sectionCoords[0].y,
-                                          pickSquare.sectionCoords[1].z - pickSquare.sectionCoords[0].z);
-    sectionVector.normalize();
-    var zVec = new THREE.Vector3(0,0,1);
-
     csgObject.setSelectMeshStatus({ action: 'add', status: SELECT_STATUSES.PICKED });
     selectableItem = { 
       type:'csg', 
@@ -900,6 +900,28 @@ function pickSelectableFromSectionLine() {
 function flushSelectableObject() {
   if (selectableItem.type == 'coplanarGroup') {
     console.log('flipping :', selectableItem);
+    var csgObject = selectableItem.csgObject;
+    var normal = selectableItem.item[0].plane.normal;
+    console.log('normal before', normal);
+    var sectionVector = new THREE.Vector3(pickSquare.sectionCoords[1].x - pickSquare.sectionCoords[0].x,
+                                          pickSquare.sectionCoords[1].y - pickSquare.sectionCoords[0].y,
+                                          pickSquare.sectionCoords[1].z - pickSquare.sectionCoords[0].z);
+    sectionVector.normalize();
+    var origin = midPoint(pickSquare.sectionCoords);
+    console.log(origin);
+    var zVec = new THREE.Vector3(0,0,1);
+    var angle = zVec.angleTo(sectionVector) * RAD_TO_DEG;
+    var zVecCheck = zVec.clone();
+    zVecCheck.cross(sectionVector);
+    if (Math.sign(zVecCheck.x) < 0) {
+      angle = 360 - angle;
+    }
+    clearCoplanarGroupHighlight();
+    csgObject.rotateOnAxis(origin, sectionVector, angle * DEG_TO_RAD);
+    csgObject.createMesh(parent, csgObjectMaterialFlat);
+    csgObject.createSelectMesh(parent, SELECT_STATUSES.PICKED);
+    firstRender = true;
+    console.log('normal after', normal);
     pickSelectable();
   }
 }
@@ -1095,13 +1117,17 @@ function checkCoplanarity(f1, f2) {
   return ((f1.normal.angleTo(f2.normal) * RAD_TO_DEG) <= COPLANAR_ANGLE_TOLERANCE);
 }
 
-function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) {
-  var coplanarGroup = highlightCenter.coplanarGroup;
+function clearCoplanarGroupHighlight() {
   if (coplanarGroupHighlight) {
     parent.remove(coplanarGroupHighlight);
     coplanarGroupHighlight = undefined;
   }
+}
+
+function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) {
+  var coplanarGroup = highlightCenter.coplanarGroup;
   
+  clearCoplanarGroupHighlight();
   var geometry = new THREE.Geometry();
   var base = 0;
   var polyCtr = 0;
@@ -1299,6 +1325,8 @@ function updatePickSquare() {
     pickSquare.mesh.position.y = highlightCenter.y;
     pickSquare.mesh.position.z = plane.position.z + 0.01;
     pickSquare.visible = true;
+    finalSectionCoords[0].z = plane.position.z;
+    finalSectionCoords[1].z = plane.position.z;
     pickSquare.sectionCoords = finalSectionCoords;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');

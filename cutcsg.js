@@ -38,6 +38,8 @@
 //  [X]  *) rotate tool around Z axes when you drag side circles
 //  [X]  *) make x and y axes work correctly when z rotate applied
 //  [ ]  *) hold down shift key while rotating, and we snap to whatever faces can be made parallel or 90 degrees to the cutplane, e.g. cuboid will rotate by 90 deg increments
+//  [ ] BUG: After dragging we should deselect text as this is interfering with mouse movements
+//  [ ] BUG: Rotate and then drag faces, and sometimes the coplanarity check fails
 //  [X]  *) rotate objects around section line
 //  [ ]  *) pick object when you snap rotate tool to its section line so you can immediately rotate it
 //  [ ]  *) make rotated objects snap back to start point when you pass it, and/or when faces are parallel to the plane
@@ -48,7 +50,6 @@
 //  [X]  *) We have to put each object in an Object3D of its own so we can use RotateOnAxis;
 //  [X]  *) rotate picked objects around it 
 //  [X]  *) lock cursor on it when you drag on it. 
-//  [ ] BUG: Rotate and then drag faces, and sometimes the coplanarity check fails
 //  [ ] Restore the tool chests with colors (toggle colors on/off)
 //  [ ] Slice objects in half at cutplane
 //  [X] Clean up all the messy code leftovers
@@ -112,6 +113,7 @@ var pickedItems = [];
 
 var pickedList = [];
 var dragging = false;
+var rotating = false;
 var mergeParent = undefined;
 var movingCutplane = false;
 var checkForCoplanarDragging = false;
@@ -827,6 +829,8 @@ function prepareForRotation() {
       csgObject.saveVertexBackups();
     }
   }
+
+  clearCoplanarGroupHighlight();
 }
 
 function placeIntoCsgObjects(csgObject) {
@@ -849,8 +853,7 @@ function setupCSG() {
   //var a = CSG.cube();
   var a = CSG.cube({ radius:0.5 });
   //var b = CSG.cube ({ radius:[1,0.3,0.3], center:[0.25, 0.65, 0] });
-  var b = CSG.cube ({ radius:[0.3,1,0.3], center:[0.25, 0.65, 0] });
-
+  var b = CSG.cube ({ radius:[0.3,1.0,0.3], center:[0.25, 0.65, 0] });
   /* sphere causes section line issues, need to investigate */
 
   //  var b = CSG.sphere( { radius: 0.5, slices:16, stacks:8 } );
@@ -909,20 +912,21 @@ function flushSelectableObject() {
     sectionVector.normalize();
     var origin = midPoint(pickSquare.sectionCoords);
     console.log(origin);
-    var zVec = new THREE.Vector3(0,0,1);
-    var angle = zVec.angleTo(sectionVector) * RAD_TO_DEG;
-    var zVecCheck = zVec.clone();
-    zVecCheck.cross(sectionVector);
-    if (Math.sign(zVecCheck.x) < 0) {
+    var zVector = new THREE.Vector3(0,0,1);
+    var angle = zVector.angleTo(sectionVector) * RAD_TO_DEG;
+    var rotationVector = zVector.clone();
+    rotationVector.cross(normal);
+    if (Math.sign(rotationVector.x) > 0) {
+      console.log('flush reversing angle');
       angle = 360 - angle;
     }
     clearCoplanarGroupHighlight();
-    csgObject.rotateOnAxis(origin, sectionVector, angle * DEG_TO_RAD);
-    csgObject.createMesh(parent, csgObjectMaterialFlat);
-    csgObject.createSelectMesh(parent, SELECT_STATUSES.PICKED);
-    firstRender = true;
+    console.log('origin:', origin, 'angle:', angle, 'rotationVector:', rotationVector);
+    csgObject.animateRotate(origin, rotationVector, angle, parent, csgObjectMaterialFlat, 15);
+    rotating = true;
+    csgObject.saveVertexBackups();
     console.log('normal after', normal);
-    pickSelectable();
+    unpickAllItems();
   }
 }
 
@@ -938,7 +942,14 @@ function unpickAllItems() {
 }
 
 function unpickRotateTool() {
+  var csgObject;
   pickedItems.shift(); // remove rotateTool, which is always at the front of the pickedItems list when it gets picked.
+  for (var pickedItem of pickedItems) {
+    if (pickedItem.type == 'csg') {
+      csgObject = pickedItem.item;
+      csgObject.saveVertexBackups();
+    }
+  }
 }
 
 function updatePickedItems(mouseDown, shiftKeyDown) {
@@ -949,7 +960,7 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
           unpickAllItems();
         }
         prepareForRotation();
-        dragging = true;
+        rotating = true;
         break;
       case 'csg':
         console.log('status:', selectableItem.item.selectMesh.status & SELECT_STATUSES.PICKED);
@@ -978,15 +989,19 @@ function updatePickedItems(mouseDown, shiftKeyDown) {
         }
     }
   } else {
-    dragging = false;
     unpickAllAfter = false;
     switch (selectableItem.type) {
       case 'csg':
+        dragging = false;
         break;
       case 'polygon':
+        dragging = false;
         break;
       case 'rotateTool':
-        unpickRotateTool();
+        if (rotating) {
+          unpickRotateTool();
+          rotating = false;
+        }
         break;
     }
     checkForCoplanarDragging = false;
@@ -1025,7 +1040,7 @@ function drawSectionLineCSG() {
   var segmentGroup;
   var iKey1, iKey2, finalIKey, intersection, intersections;
 
-  if (!(movingCutplane || dragging || firstRender) ) {
+  if (!(movingCutplane || dragging || rotating || firstRender) ) {
     return; // don't update the sections if not moving the cutplane
   }
   if (!csgObjects) {
@@ -1527,19 +1542,19 @@ function updateRotateTool(conditions) {
     return(true);
   }
 
-/*
-  for (var i in hotSpots.sides) {
-    sideSpot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
-    distToSpot = Math.sqrt(dist2(crosshair.position, sideSpot));
-    if (distToSpot < specs.smallRingRadius) {
-      yellowRing.position.x = hotSpots.sides[i].x;
-      yellowRing.position.y = hotSpots.sides[i].y;
-      rotateTool.nearestHotSpot = { which: 'corner', index: i, dragStart: new THREE.Vector2(hotSpots.sides[i].x, hotSpots.sides[i].y) };
-      selectableItem = { type: 'rotateTool' };
-      return(true);
-    }
-  }
-*/
+  /*
+     for (var i in hotSpots.sides) {
+     sideSpot = { x: rotateTool.position.x + hotSpots.sides[i].x, y: rotateTool.position.y + hotSpots.sides[i].y };
+     distToSpot = Math.sqrt(dist2(crosshair.position, sideSpot));
+     if (distToSpot < specs.smallRingRadius) {
+     yellowRing.position.x = hotSpots.sides[i].x;
+     yellowRing.position.y = hotSpots.sides[i].y;
+     rotateTool.nearestHotSpot = { which: 'corner', index: i, dragStart: new THREE.Vector2(hotSpots.sides[i].x, hotSpots.sides[i].y) };
+     selectableItem = { type: 'rotateTool' };
+     return(true);
+     }
+     }
+   */
 
   spot = { x: rotateTool.position.x, y: rotateTool.position.y };
   distToSpot = Math.sqrt(dist2(crosshair.position, spot));
@@ -1606,7 +1621,7 @@ function updateCrosshair() {
       }
     }        
 
-    if (pickedItems.length && dragging) {
+    if (pickedItems.length && (dragging || rotating)) {
       var xDiff = crosshair.position.x - prevCrossHair.x;
       var yDiff = crosshair.position.y - prevCrossHair.y;
       var sumCtr = 0;
@@ -1793,9 +1808,17 @@ function checkWireFrameToggle() {
   }
 }
 
-// --------------------------------------------------------------------------------
-// Main loop begins
-// --------------------------------------------------------------------------------
+function updateAnimations() {
+  for (var csgObject of csgObjects) {
+    if (csgObject.animation) {
+      rotating = csgObject.animate(csgObjectMaterialFlat, SELECT_STATUSES.SELECTABLE);
+    }
+  }
+}
+
+  // --------------------------------------------------------------------------------
+  // Main loop begins
+  // --------------------------------------------------------------------------------
 
 
 function render() {
@@ -1810,6 +1833,7 @@ function render() {
   updateCrosshair();
   updateCutplane();
   updateCursorTracking();
+  updateAnimations();
 
   renderDebugText();
 

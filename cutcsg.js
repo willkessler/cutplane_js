@@ -1,4 +1,4 @@
-// TODO: 
+// TODOS: 
 //  [X] make option key rotate the room, and remove Orbit
 //  [X] make section line properly dashed
 //  [X] figure out how to make the plane semitransparent with a semi-transparent dotted texture
@@ -32,6 +32,8 @@
 //  [X] Make it so that you can't drag the extrusion face inside the extrusion, or if you do it switches to extending the bottom face and does a subtract() instead of union().
 //  [X] Fix section line bug where sometimes it will jump over the surface
 //  [X] Picked items should indicate they're still picked, e.g. selectMesh should stay green
+//  [ ] Select and drag in-plane faces and prevent section line bug when faces are in plane. Highlight in-plane faces correctly.
+//  [ ] Slice objects in half at cutplane
 //  [ ] Keep dragged polygons looking picked while being dragged
 //  [ ] Restore the rotate tool but make it smarter about snapping faces into the plane. 
 //  [ ] Marching ants section line bug
@@ -51,7 +53,6 @@
 //  [X]  *) rotate picked objects around it 
 //  [X]  *) lock cursor on it when you drag on it. 
 //  [ ] Restore the tool chests with colors (toggle colors on/off)
-//  [ ] Slice objects in half at cutplane
 //  [X] Clean up all the messy code leftovers
 //  [ ] If extrusion isn't dragged to create anything new, just cancel the boolean op
 //  [ ] Extrusion inward to subtract

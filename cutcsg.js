@@ -84,6 +84,7 @@ var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.087;
 var POINT_ON_LINE_TOLERANCE = 0.001;
+var POINT_ON_PLANE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 var COPLANAR_DRAG_TOLERANCE = 0.0015;
@@ -363,6 +364,15 @@ function pointInPoly (point, poly) {
 // This function is also apparently built in to THREEjs, cf https://threejs.org/docs/?q=plane#Reference/Math/Plane intersectsLine(). 
 // However, we need the intersection point and the t value.
 function intersectLineWithPlane(P0, P1, planeZ) {
+  var planeProjection1 = new THREE.Vector3(P0.x, P0.y, planeZ);
+  var planeProjection2 = new THREE.Vector3(P1.x, P1.y, planeZ);
+  if ((dist3(P0, planeProjection1) < POINT_ON_PLANE_TOLERANCE) && (dist3(P1, planeProjection2) < POINT_ON_PLANE_TOLERANCE)) {
+    // line segment is in the plane
+    return({intersected: true,
+            intersectPoint: P0,
+            whichEndpoint: 2 // ie, both
+    });
+  }
   var n =  new THREE.Vector3(0,0,1); // normal vector to cutplane
   var u = new THREE.Vector3();
   u.copy(P1);
@@ -378,6 +388,7 @@ function intersectLineWithPlane(P0, P1, planeZ) {
   //console.log('nDotV0MinusP0:', nDotV0MinusP0);
   var s1 = (nDotV0MinusP0  / nDotU);
   //console.log('s1:' , s1);
+  var whichEndpoint = -1;
   if ((s1 >= 0.0) && (s1 <= 1.0)) {
     var intersectPoint = new THREE.Vector3();
     intersectPoint.copy(P0);
@@ -385,12 +396,15 @@ function intersectLineWithPlane(P0, P1, planeZ) {
     intersectPoint.add(offset);
     if (s1 < FACE_IN_PLANE_TOLERANCE) {
       //console.log('point 0', P0.x, P0.y, P0.z, ' on plane with P1=', P1.x, P1.y, P1.z);
+      whichEndpoint = 0;
     } else if  (1.0 - s1 < FACE_IN_PLANE_TOLERANCE) {
       //console.log('point 1', P1.x, P1.y, P1.z, ' on plane with P0=', P0.x, P0.y, P0.z);
+      whichEndpoint = 1;
     }
     //console.log('Intersection found at', intersectPoint, ' between P0:', P0.x, P0.y, P0.z, ' and P1:', P1.x, P1.y, P1.z);
     return({intersected: true,
-            intersectPoint: intersectPoint
+            intersectPoint: intersectPoint,
+            whichEndpoint: whichEndpoint
     });
   } else {
     //console.log('No intersection found, P0:', P0.x, P0.y, P0.z, ' and P1:', P1.x, P1.y, P1.z);
@@ -1088,6 +1102,9 @@ function drawSectionLineCSG() {
         P1 = new THREE.Vector3(vertices[(j+1) % polygonLength].pos.x,vertices[(j+1) % polygonLength].pos.y,vertices[(j+1) % polygonLength].pos.z);
         intersection = intersectLineWithPlane(P0, P1, plane.position.z);
         if (intersection.intersected) {
+          if (intersection.whichEndpoint == 2) {
+            console.log('segment in plane:', P0, P1, 'planeZ:', plane.position.z, 'normal:', polygon.plane.normal);
+          }
           intersections.push(intersection);
           intersectionsLog[intersection.intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersection.intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES)] = true;
           //console.log('found intersection: ', intersection.intersectPoint);
@@ -1302,6 +1319,10 @@ function updatePickSquare() {
     for (var sectionEdge in csgObject.sectionEdges) {
       coordsArray = [];
       siblings = csgObject.sectionEdges[sectionEdge];
+      if (siblings.length < 2) {
+        // degenerate case, not a full edge
+        continue;
+      }
       coordsRaw = sectionEdge.split('_');
       coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
 

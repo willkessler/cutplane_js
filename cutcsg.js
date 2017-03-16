@@ -82,7 +82,7 @@ var ROOM_SIZE = 1.0;
 var RAD_TO_DEG = 180 / Math.PI;
 var DEG_TO_RAD = Math.PI / 180;
 var FACE_IN_PLANE_TOLERANCE = 0.0001;
-var POINT_ON_POINT_TOLERANCE = 0.087;
+var POINT_ON_POINT_TOLERANCE = 0.001;
 var POINT_ON_LINE_TOLERANCE = 0.001;
 var POINT_ON_PLANE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
@@ -1044,6 +1044,34 @@ function faceInCutplane(face, vertices) {
   );
 }
 
+function addToSectionSegments(intersections, sectionSegments, sectionSegmentKeys, sectionEdges, polygon ) {
+  var iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+  var iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
+  var checkKey1 = iKey1 + ':' + iKey2;
+  var checkKey2 = iKey2 + ':' + iKey1;
+  if (sectionSegmentKeys.hasOwnProperty(checkKey1) || sectionSegmentKeys.hasOwnProperty(checkKey2)) {
+    // we already have this segment or its backwards equivalent
+    intersections = [];
+    return(false);
+  }
+
+  sectionSegmentKeys[checkKey1] = true;
+  sectionSegmentKeys[checkKey2] = true;
+  sectionSegments.vertices.push(intersections[0].intersectPoint);
+  sectionSegments.vertices.push(intersections[1].intersectPoint);
+  finalIKey = iKey2;
+  if (!sectionEdges.hasOwnProperty(iKey1)) {
+    sectionEdges[iKey1] = [];
+  }
+  sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
+  if (!sectionEdges.hasOwnProperty(iKey2)) {
+    sectionEdges[iKey2] = [];
+  }
+  sectionEdges[iKey2].push({ point: iKey1, polygon: polygon });
+  intersections = [];
+
+  return(true);
+}
 
 /* This section line routine works on THREE Mesh objects, but otherwise is the same as the JSModeler version (drawSectionLineJSM) above */
 function drawSectionLineCSG() {
@@ -1052,8 +1080,9 @@ function drawSectionLineCSG() {
   var face;
   var sectionEdges;
   var sectionEdgesCount = 0;
+  var sectionSegmentKeys = {};
   var segmentGroup;
-  var iKey1, iKey2, finalIKey, intersection, intersections;
+  var intersection, intersections, inplaneIntersections;
 
   if (!(movingCutplane || dragging || rotating || firstRender) ) {
     return; // don't update the sections if not moving the cutplane
@@ -1102,31 +1131,30 @@ function drawSectionLineCSG() {
         P1 = new THREE.Vector3(vertices[(j+1) % polygonLength].pos.x,vertices[(j+1) % polygonLength].pos.y,vertices[(j+1) % polygonLength].pos.z);
         intersection = intersectLineWithPlane(P0, P1, plane.position.z);
         if (intersection.intersected) {
-          if (intersection.whichEndpoint == 2) {
+          if ((intersection.whichEndpoint == 0) || 
+              (intersection.whichEndpoint == 1)) {
+            console.log('endpoint ', intersection.whichEndpoint, ' in plane, skipping.');
+          } else if (intersection.whichEndpoint == 2) {
             console.log('segment in plane:', P0, P1, 'planeZ:', plane.position.z, 'normal:', polygon.plane.normal);
+            inplaneIntersections = [
+              { intersectPoint: new THREE.Vector3(P0.x, P0.y, plane.position.z) },
+              { intersectPoint: new THREE.Vector3(P1.x, P1.y, plane.position.z) } 
+            ];
+            if (addToSectionSegments(inplaneIntersections, sectionSegments, sectionSegmentKeys, sectionEdges, polygon)) {
+              sectionExists = true;
+              sectionEdgesCount++;
+            }
+          } else {
+            intersections.push(intersection);
           }
-          intersections.push(intersection);
           intersectionsLog[intersection.intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersection.intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES)] = true;
           //console.log('found intersection: ', intersection.intersectPoint);
 
           if (intersections.length == 2) {
-            sectionExists = true;
-
-            iKey1 = intersections[0].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[0].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
-            iKey2 = intersections[1].intersectPoint.x.toFixed(TO_FIXED_DECIMAL_PLACES) + '_' + intersections[1].intersectPoint.y.toFixed(TO_FIXED_DECIMAL_PLACES);
-            sectionSegments.vertices.push(intersections[0].intersectPoint);
-            sectionSegments.vertices.push(intersections[1].intersectPoint);
-            finalIKey = iKey2;
-            if (!sectionEdges.hasOwnProperty(iKey1)) {
-              sectionEdges[iKey1] = [];
+            if (addToSectionSegments(intersections, sectionSegments, sectionSegmentKeys, sectionEdges, polygon)) {
+              sectionExists = true;
+              sectionEdgesCount++;
             }
-            sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
-            if (!sectionEdges.hasOwnProperty(iKey2)) {
-              sectionEdges[iKey2] = [];
-            }
-            sectionEdges[iKey2].push({ point: iKey1, polygon: polygon });
-            sectionEdgesCount++;
-            intersections = [];
           }
         }
       }

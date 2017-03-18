@@ -85,6 +85,7 @@ var FACE_IN_PLANE_TOLERANCE = 0.0001;
 var POINT_ON_POINT_TOLERANCE = 0.001;
 var POINT_ON_LINE_TOLERANCE = 0.001;
 var POINT_ON_PLANE_TOLERANCE = 0.001;
+var NORMAL_TO_CUTPLANE_TOLERANCE = 0.001;
 var TO_FIXED_DECIMAL_PLACES = 4;
 var COPLANAR_ANGLE_TOLERANCE = .1; // degrees, not radians
 var COPLANAR_DRAG_TOLERANCE = 0.0015;
@@ -1050,16 +1051,41 @@ function addToSectionSegments(intersections, sectionSegments, sectionSegmentKeys
   var checkKey1 = iKey1 + ':' + iKey2;
   var checkKey2 = iKey2 + ':' + iKey1;
   if (sectionSegmentKeys.hasOwnProperty(checkKey1) || sectionSegmentKeys.hasOwnProperty(checkKey2)) {
-    // we already have this segment or its backwards equivalent
+    // we already have this segment or its backwards equivalent. 
+    console.log('key found on polygon normal', polygon.plane.normal, 'planez:', plane.position.z);
     intersections = [];
+    if (Math.abs(1.0 - Math.abs(polygon.plane.normal.z)) < NORMAL_TO_CUTPLANE_TOLERANCE) {
+      console.log('polygon in plane', polygon);
+      // If this polygon is in the plane, though, let's overwrite a segment we might have had from a polygon
+      // that is not in the plane.
+      if (sectionEdges.hasOwnProperty[iKey1]) {
+        for (var intersect of sectionEdges[iKey1]) {
+          console.log('replacing polygon, 1');
+          intersect.polygon = polygon;
+        }
+      } else {
+        console.log('insert inplane poly segment, 1');
+        sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
+      }
+      if (sectionEdges.hasOwnProperty[iKey2]) {
+        for (var intersect of sectionEdges[iKey2]) {
+          console.log('replacing polygon, 2');
+          intersect.polygon = polygon;
+        }
+      } else {
+        console.log('insert inplane poly segment, 2');
+        sectionEdges[iKey2].push({ point: iKey2, polygon: polygon });
+      }
+    } 
     return(false);
   }
 
+  console.log('insert out-of-plane poly segment');
   sectionSegmentKeys[checkKey1] = true;
   sectionSegmentKeys[checkKey2] = true;
   sectionSegments.vertices.push(intersections[0].intersectPoint);
   sectionSegments.vertices.push(intersections[1].intersectPoint);
-  finalIKey = iKey2;
+
   if (!sectionEdges.hasOwnProperty(iKey1)) {
     sectionEdges[iKey1] = [];
   }
@@ -1135,7 +1161,7 @@ function drawSectionLineCSG() {
               (intersection.whichEndpoint == 1)) {
             console.log('endpoint ', intersection.whichEndpoint, ' in plane, skipping.');
           } else if (intersection.whichEndpoint == 2) {
-            console.log('segment in plane:', P0, P1, 'planeZ:', plane.position.z, 'normal:', polygon.plane.normal);
+            //console.log('segment in plane:', P0, P1, 'planeZ:', plane.position.z, 'normal:', polygon.plane.normal);
             inplaneIntersections = [
               { intersectPoint: new THREE.Vector3(P0.x, P0.y, plane.position.z) },
               { intersectPoint: new THREE.Vector3(P1.x, P1.y, plane.position.z) } 
@@ -1185,7 +1211,7 @@ function clearCoplanarGroupHighlight() {
   }
 }
 
-function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) {
+function createCoplanarGroupHighlight(highlightCenter, pickPosition) {
   var coplanarGroup = highlightCenter.coplanarGroup;
   
   clearCoplanarGroupHighlight();
@@ -1215,7 +1241,7 @@ function createCoplanarGroupHighlight(highlightCenter, pickPosition, csgObject) 
   selectableItem = { 
     type:'coplanarGroup', 
     item: coplanarGroup,
-    csgObject: csgObject,
+    csgObject: highlightCenter.csgObject,
     pickPosition: pickPosition
   };
 
@@ -1396,7 +1422,7 @@ function updatePickSquare() {
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
       highlightCenter.csgObject.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.SELECTABLE });
-      createCoplanarGroupHighlight(highlightCenter, pickSquare.mesh.position, highlightCenter.csgObject);
+      createCoplanarGroupHighlight(highlightCenter, pickSquare.mesh.position);
       return (true); // we found a face to highlight, so do not try to highlight entire objects
     }
   }

@@ -134,6 +134,7 @@ var rotatingRoom = true;
 var roomRotateX = Math.PI/8;
 var roomRotateY = Math.PI/4;
 var cutSections;
+var inplanePolygons = {};
 var firstRender = true;
 var coplanarGroupHighlight;
 
@@ -1054,33 +1055,10 @@ function addToSectionSegments(intersections, sectionSegments, sectionSegmentKeys
     // we already have this segment or its backwards equivalent. 
     console.log('key found on polygon normal', polygon.plane.normal, 'planez:', plane.position.z);
     intersections = [];
-    if (Math.abs(1.0 - Math.abs(polygon.plane.normal.z)) < NORMAL_TO_CUTPLANE_TOLERANCE) {
-      console.log('polygon in plane', polygon);
-      // If this polygon is in the plane, though, let's overwrite a segment we might have had from a polygon
-      // that is not in the plane.
-      if (sectionEdges.hasOwnProperty[iKey1]) {
-        for (var intersect of sectionEdges[iKey1]) {
-          console.log('replacing polygon, 1');
-          intersect.polygon = polygon;
-        }
-      } else {
-        console.log('insert inplane poly segment, 1');
-        sectionEdges[iKey1].push({ point: iKey2, polygon: polygon });
-      }
-      if (sectionEdges.hasOwnProperty[iKey2]) {
-        for (var intersect of sectionEdges[iKey2]) {
-          console.log('replacing polygon, 2');
-          intersect.polygon = polygon;
-        }
-      } else {
-        console.log('insert inplane poly segment, 2');
-        sectionEdges[iKey2].push({ point: iKey2, polygon: polygon });
-      }
-    } 
     return(false);
   }
 
-  console.log('insert out-of-plane poly segment');
+  console.log('Insert poly segment');
   sectionSegmentKeys[checkKey1] = true;
   sectionSegmentKeys[checkKey2] = true;
   sectionSegments.vertices.push(intersections[0].intersectPoint);
@@ -1139,6 +1117,7 @@ function drawSectionLineCSG() {
   var objCtr = 0;
   var sectionSegments = new THREE.Geometry();
 
+  inplanePolygons = {};
   for (var csgObject of csgObjects) {
     var polygons = csgObject.polygons;
     csgObject.sectionEdges = {};
@@ -1166,10 +1145,12 @@ function drawSectionLineCSG() {
               { intersectPoint: new THREE.Vector3(P0.x, P0.y, plane.position.z) },
               { intersectPoint: new THREE.Vector3(P1.x, P1.y, plane.position.z) } 
             ];
-            if (addToSectionSegments(inplaneIntersections, sectionSegments, sectionSegmentKeys, sectionEdges, polygon)) {
-              sectionExists = true;
-              sectionEdgesCount++;
-            }
+            if (Math.abs(1.0 - Math.abs(polygon.plane.normal.z)) < NORMAL_TO_CUTPLANE_TOLERANCE) {
+              inplanePolygons[polygon.uuid] = polygon;
+            } else {
+              addToSectionSegments(inplaneIntersections, sectionSegments, sectionSegmentKeys, sectionEdges, polygon);
+              continue;
+            } 
           } else {
             intersections.push(intersection);
           }

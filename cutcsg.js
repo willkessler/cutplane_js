@@ -627,6 +627,7 @@ function setupCrosshair() {
   
   plane.add(crosshair);
 
+  plane.position.z = 0.5;
 }
 
 function setupRoom() {
@@ -882,13 +883,11 @@ function setupCSG() {
   
   /* bug: two section lines means one of them has a marching ants issue */
 
-  /*
      var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
      placeIntoCsgObjects(c);
 
      var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
      placeIntoCsgObjects(d);
-   */
 
 }
 
@@ -1053,12 +1052,12 @@ function addToSectionSegments(intersections, sectionSegments, sectionSegmentKeys
   var checkKey2 = iKey2 + ':' + iKey1;
   if (sectionSegmentKeys.hasOwnProperty(checkKey1) || sectionSegmentKeys.hasOwnProperty(checkKey2)) {
     // we already have this segment or its backwards equivalent. 
-    console.log('key found on polygon normal', polygon.plane.normal, 'planez:', plane.position.z);
+    //console.log('key found on polygon normal', polygon.plane.normal, 'planez:', plane.position.z);
     intersections = [];
     return(false);
   }
 
-  console.log('Insert poly segment');
+  //console.log('Insert poly segment');
   sectionSegmentKeys[checkKey1] = true;
   sectionSegmentKeys[checkKey2] = true;
   sectionSegments.vertices.push(intersections[0].intersectPoint);
@@ -1138,7 +1137,7 @@ function drawSectionLineCSG() {
         if (intersection.intersected) {
           if ((intersection.whichEndpoint == 0) || 
               (intersection.whichEndpoint == 1)) {
-            console.log('endpoint ', intersection.whichEndpoint, ' in plane, skipping.');
+            //console.log('endpoint ', intersection.whichEndpoint, ' in plane, skipping.');
           } else if (intersection.whichEndpoint == 2) {
             //console.log('segment in plane:', P0, P1, 'planeZ:', plane.position.z, 'normal:', polygon.plane.normal);
             inplaneIntersections = [
@@ -1343,50 +1342,63 @@ function hidePickSquare() {
 }
 
 function updatePickSquare() {
-  var nearestMin = 1e10, highlightCenter = { x: -1e10, y:-1e10, active: false };
+  var nearestMin = 1e10;
+  var highlightCenter = { x: -1e10, y:-1e10, active: false };
   var siblings, coordsArray, coord1, coord2, coordsRaw, finalSectionCoords;
+  var inplaneSelectableFound;
 
   if (!csgObjects) {
     return(false);
   }
 
   for (var csgObject of csgObjects) {
-    for (var sectionEdge in csgObject.sectionEdges) {
-      coordsArray = [];
-      siblings = csgObject.sectionEdges[sectionEdge];
-      if (siblings.length < 2) {
-        // degenerate case, not a full edge
-        continue;
+    inplaneSelectableFound = false;
+    // first check if an inplaneSelectableFound is in fact selectable.
+    _.each(inplanePolygons, function(polygon) {
+      if (polygon.pointInside(crosshair.position)) {
+        if (!inplaneSelectableFound) {
+          highlightCenter = { x: crosshair.position.x, y: crosshair.position.y, csgObject: csgObject, coplanarGroup: polygon.coplanarGroup, active:true };
+          inplaneSelectableFound = true;
+        }
       }
-      coordsRaw = sectionEdge.split('_');
-      coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
+    });
+    if (!inplaneSelectableFound) {
+      for (var sectionEdge in csgObject.sectionEdges) {
+        coordsArray = [];
+        siblings = csgObject.sectionEdges[sectionEdge];
+        if (siblings.length < 2) {
+          // degenerate case, not a full edge
+          continue;
+        }
+        coordsRaw = sectionEdge.split('_');
+        coord1 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
 
-      coordsRaw = siblings[0].point.split('_');
-      coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
-      coordsArray.push(coord1);
-      coordsArray.push(coord2);
+        coordsRaw = siblings[0].point.split('_');
+        coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
+        coordsArray.push(coord1);
+        coordsArray.push(coord2);
 
-      coordsArray.push(coord1);
-      coordsRaw = siblings[1].point.split('_');
-      coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
-      coordsArray.push(coord2);
+        coordsArray.push(coord1);
+        coordsRaw = siblings[1].point.split('_');
+        coord2 = { x: parseFloat(coordsRaw[0]), y: parseFloat(coordsRaw[1]) };
+        coordsArray.push(coord2);
 
-      var tolerance = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
-      for (var ci = 0; ci < 4; ci += 2) {
-        var nearest = distToSegmentSquared(crosshair.position,coordsArray[ci], coordsArray[ci+1])
-        if ((nearest.distance < nearestMin) && (nearest.distance < tolerance)) {
-          nearestMin = nearest.distance;
-          highlightCenter.x = nearest.nearestPoint.x;
-          highlightCenter.y = nearest.nearestPoint.y;
-          highlightCenter.csgObject = csgObject;
-          highlightCenter.active = true;
-          finalSectionCoords = [ coordsArray[ci], coordsArray[ci+1] ];
-          if (ci == 0) {
-            highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
-          } else {
-            highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][1].polygon.coplanarGroup;
-          }
-        }          
+        var tolerance = rotateTool.specs.smallRingRadius * rotateTool.specs.smallRingRadius;
+        for (var ci = 0; ci < 4; ci += 2) {
+          var nearest = distToSegmentSquared(crosshair.position,coordsArray[ci], coordsArray[ci+1])
+          if ((nearest.distance < nearestMin) && (nearest.distance < tolerance)) {
+            nearestMin = nearest.distance;
+            highlightCenter = { x: nearest.nearestPoint.x, y: nearest.nearestPoint.y, csgObject: csgObject, active:true };
+            coordsArray[ci].z = plane.position.z;
+            coordsArray[ci+1].z = plane.position.z;
+            pickSquare.sectionCoords = [ coordsArray[ci], coordsArray[ci+1] ];
+            if (ci == 0) {
+              highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][0].polygon.coplanarGroup;
+            } else {
+              highlightCenter.coplanarGroup = csgObject.sectionEdges[sectionEdge][1].polygon.coplanarGroup;
+            }
+          }          
+        }
       }
     }
   }
@@ -1397,9 +1409,6 @@ function updatePickSquare() {
     pickSquare.mesh.position.y = highlightCenter.y;
     pickSquare.mesh.position.z = plane.position.z + 0.01;
     pickSquare.visible = true;
-    finalSectionCoords[0].z = plane.position.z;
-    finalSectionCoords[1].z = plane.position.z;
-    pickSquare.sectionCoords = finalSectionCoords;
     if (highlightCenter.coplanarGroup) {
       //console.log('we have a highlight coplanarGroup');
       highlightCenter.csgObject.setSelectMeshStatus({ action: 'remove', status: SELECT_STATUSES.SELECTABLE });

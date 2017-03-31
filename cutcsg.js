@@ -883,11 +883,11 @@ function setupCSG() {
   
   /* bug: two section lines means one of them has a marching ants issue */
 
-     var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
-     placeIntoCsgObjects(c);
+  var c = CSG.cube({ radius: 0.25, center:[0.5, 0.5, .2] });
+  placeIntoCsgObjects(c);
 
-     var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
-     placeIntoCsgObjects(d);
+  var d = CSG.cube({ radius: 0.25, center:[-0.5, -0.5, 0] });
+  placeIntoCsgObjects(d);
 
 }
 
@@ -1351,17 +1351,18 @@ function updatePickSquare() {
     return(false);
   }
 
-  for (var csgObject of csgObjects) {
-    inplaneSelectableFound = false;
-    // first check if an inplaneSelectableFound is in fact selectable.
-    _.each(inplanePolygons, function(polygon) {
-      if (polygon.pointInside(crosshair.position)) {
-        if (!inplaneSelectableFound) {
-          highlightCenter = { x: crosshair.position.x, y: crosshair.position.y, csgObject: csgObject, coplanarGroup: polygon.coplanarGroup, active:true };
-          inplaneSelectableFound = true;
-        }
+  inplaneSelectableFound = false;
+  // First check if an inplaneSelectableFound is in fact selectable.
+  _.each(inplanePolygons, function(polygon) {
+    if (polygon.pointInside(crosshair.position)) {
+      if (!inplaneSelectableFound) {
+        highlightCenter = { x: crosshair.position.x, y: crosshair.position.y, csgObject: polygon.csgObject, coplanarGroup: polygon.coplanarGroup, active:true };
+        inplaneSelectableFound = true;
       }
-    });
+    }
+  });
+
+  for (var csgObject of csgObjects) {
     if (!inplaneSelectableFound) {
       for (var sectionEdge in csgObject.sectionEdges) {
         coordsArray = [];
@@ -1787,6 +1788,13 @@ function updateCutplane() {
       plane.position.z = Math.max(-1, Math.min(plane.position.z + planeDiff, 1.0));
 
       if (dragging) {
+
+        if (checkForCoplanarDragging) {
+          if (dist3slow(crosshair.position, coplanarDragStart) > COPLANAR_DRAG_TOLERANCE) {
+            pickCoplanarGroup();
+          }
+        }        
+
         var zDiff = plane.position.z - prevPlaneZ;
         for (var pickedItem of pickedItems) {
           switch (pickedItem.type) {
@@ -1796,6 +1804,16 @@ function updateCutplane() {
             case 'csg':
               pickedItem.item.mesh.geometry.translate(0,0, zDiff);
               pickedItem.item.translate(0,0,zDiff);
+              break;
+            case 'polygon':
+              console.log('Dragging polygons');
+              var polygon = pickedItem.item;
+              var offsetVector = new THREE.Vector3(0,0,plane.position.z - coplanarDragStart.z);
+              if (Math.sign(offsetVector.z) != Math.sign(polygon.plane.normal.z)) {
+                offsetVector.z = 0; // you cannot drag the in-plane faces "into" the object
+              }
+              polygon.setVerticesFromBackups(offsetVector);
+              setPolygonMeshFromBackup(polygon, offsetVector);
               break;
           }
         }

@@ -159,10 +159,18 @@ var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
   vertexColors: THREE.FaceColors // you need this if you want to change face colors later
 } );
 
-var polygonHighlightMaterial = new THREE.MeshStandardMaterial ( {
+//var material = new THREE.MeshLambertMaterial({color: 0x5555ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+var polygonHighlightTexture = new THREE.TextureLoader().load( "images/crosshatch2.jpg" );
+polygonHighlightTexture.wrapS = THREE.RepeatWrapping;
+polygonHighlightTexture.wrapT = THREE.RepeatWrapping;
+polygonHighlightTexture.repeat.set( 64,64 );
+
+var polygonHighlightMaterial = new THREE.MeshLambertMaterial ( {
+  map: polygonHighlightTexture,
+  transparent: true,
+  side: THREE.DoubleSide,
   shading: THREE.FlatShading,
   color:0xffff00,
-  side: THREE.DoubleSide,
   vertexColors: THREE.FaceColors // you need this if you want to change face colors later
 } );
 
@@ -496,6 +504,29 @@ function makeTextSprite( message, parameters )
   sprite.scale.set(1,1,1);
   return sprite;  
 }
+
+// From: http://stackoverflow.com/questions/20774648/three-js-generate-uv-coordinate
+function assignUvs(geometry) {
+  geometry.faceVertexUvs[0] = [];
+  _.each(geometry.faces, function(face) {
+    var components = ['x', 'y', 'z'].sort(function(a, b) {
+      return Math.abs(face.normal[a]) > Math.abs(face.normal[b]);
+    });
+
+    var v1 = geometry.vertices[face.a];
+    var v2 = geometry.vertices[face.b];
+    var v3 = geometry.vertices[face.c];
+
+    geometry.faceVertexUvs[0].push([
+      new THREE.Vector2(v1[components[0]], v1[components[1]]),
+      new THREE.Vector2(v2[components[0]], v2[components[1]]),
+      new THREE.Vector2(v3[components[0]], v3[components[1]])
+    ]);
+
+  });
+  geometry.uvsNeedUpdate = true;
+}
+
 
 /* Old not working, From stemkoski https://github.com/stemkoski/stemkoski.github.com/blob/master/Three.js/Sprite-Text-Labels.html */
 
@@ -1191,6 +1222,16 @@ function clearCoplanarGroupHighlight() {
   }
 }
 
+function updateCoplanarGroupHighlight(offset) {
+  if (coplanarGroupHighlight) {
+    var geometry = coplanarGroupHighlight.geometry;
+    for (var face of geometry.faces) {
+      face.setVerticesFromBackups(offset);
+      setPolygonMeshFromBackup(face, offset);
+    }
+  }
+}
+
 function createCoplanarGroupHighlight(highlightCenter, pickPosition) {
   var coplanarGroup = highlightCenter.coplanarGroup;
   
@@ -1198,10 +1239,15 @@ function createCoplanarGroupHighlight(highlightCenter, pickPosition) {
   var geometry = new THREE.Geometry();
   var base = 0;
   var polyCtr = 0;
+  var highlightVertex, normalVector;
   for (var polygon of coplanarGroup) {
     var vertices = polygon.vertices;
+    normalVector = new THREE.Vector3(polygon.plane.normal.x,polygon.plane.normal.y,polygon.plane.normal.z);
+    normalVector.multiplyScalar(.01);
     for (var vertex of vertices) {
-      geometry.vertices.push(new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z));
+      highlightVertex = new THREE.Vector3(vertex.pos.x, vertex.pos.y, vertex.pos.z);
+      highlightVertex.add(normalVector);
+      geometry.vertices.push(highlightVertex);
       //console.log('Created highlight vertex:', vertex.pos.x, vertex.pos.y, vertex.pos.z);
     }
     //console.log('highlight normal:', polygon.plane.normal);
@@ -1214,8 +1260,19 @@ function createCoplanarGroupHighlight(highlightCenter, pickPosition) {
     //console.log('Highlighted polygon:', polyCtr++);
   }
 
-  coplanarGroupHighlight = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
-  coplanarGroupHighlight.geometry.elementsNeedUpdate = true;
+  var coplanarLineMaterial= new THREE.LineBasicMaterial({
+    color: 0xaaa,
+    side: THREE.DoubleSide,
+    linewidth: 2,
+    depthTest: true,
+    depthWrite: true
+  });
+
+  assignUvs(geometry);
+
+  coplanarGroupHighlight = new THREE.Object3D();
+  var coplanarGroupFaces = new THREE.Mesh( geometry, polygonHighlightMaterial ) ;
+  coplanarGroupHighlight.add(coplanarGroupFaces);
   parent.add(coplanarGroupHighlight);
 
   selectableItem = { 
@@ -1729,6 +1786,7 @@ function updateCrosshair() {
 
               polygon.setVerticesFromBackups(scaledProjectedVector);
               setPolygonMeshFromBackup(polygon, scaledProjectedVector);
+              updateCoplanarGroupHighlight(scaledProjectedVector);
             }
             break;
           case 'rotateTool':
@@ -1773,6 +1831,7 @@ function updateCrosshair() {
 
 function updateCutplane() {
   if (movingCutplane) {
+    clearCoplanarGroupHighlight();
     var cursorDiff = new THREE.Vector2(
       (cursor.current.x - cursor.last.x) * .01,
       (cursor.current.y - cursor.last.y) * .01

@@ -160,10 +160,10 @@ var csgObjectMaterialFlat = new THREE.MeshStandardMaterial ( {
 } );
 
 //var material = new THREE.MeshLambertMaterial({color: 0x5555ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
-var polygonHighlightTexture = new THREE.TextureLoader().load( "images/crosshatch2.jpg" );
+var polygonHighlightTexture = new THREE.TextureLoader().load( "images/grid2.jpg" );
 polygonHighlightTexture.wrapS = THREE.RepeatWrapping;
 polygonHighlightTexture.wrapT = THREE.RepeatWrapping;
-polygonHighlightTexture.repeat.set( 64,64 );
+polygonHighlightTexture.repeat.set(22,22 );
 
 var polygonHighlightMaterial = new THREE.MeshLambertMaterial ( {
   map: polygonHighlightTexture,
